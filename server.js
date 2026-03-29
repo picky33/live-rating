@@ -6,7 +6,7 @@ const mysql = require('mysql2');
 const axios = require('axios');
 const ioClient = require('socket.io-client');
 const crypto = require('crypto');
-
+const https = require('https');
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server);
@@ -46,6 +46,7 @@ function getUserId(req, res) {
 let reactionCooldown = 10;
 let singleVoteMode = true;
 let qrOverrideURL = "";
+let publicIP = null;
 
 /* =========================
    TRACKING
@@ -238,6 +239,30 @@ app.get('/api/current',(req,res)=>{
 /* =========================
    QR CODE URL (ADMIN CONTROLLED)
 ========================= */
+function fetchPublicIP(){
+
+    if (!USE_REMOTE_MASTER) return; // only AWS container
+
+    https.get('https://api.ipify.org', (res) => {
+
+        let data = '';
+
+        res.on('data', chunk => data += chunk);
+
+        res.on('end', () => {
+
+            publicIP = data.trim();
+
+            console.log("\n==============================");
+            console.log(`🌐 Public URL: http://${publicIP}:3000/vote.html`);
+            console.log("==============================\n");
+
+        });
+
+    }).on('error', (err) => {
+        console.log("⚠️ Failed to fetch public IP:", err.message);
+    });
+}
 
 app.get('/api/qr-url', (req,res)=>{
     res.json({ url: qrOverrideURL });
@@ -460,6 +485,7 @@ if (!USE_REMOTE_MASTER && MASTER_URL) {
    START
 ========================= */
 
-server.listen(3000,'0.0.0.0',()=>{
+server.listen(3000, '0.0.0.0', () => {
     console.log("Server running on port 3000");
+    fetchPublicIP(); // 🔥 important
 });
