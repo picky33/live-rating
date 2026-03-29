@@ -103,6 +103,12 @@ Shuffle Playback
 </label>
 </div>
 
+<div style="margin-top:20px;">
+    <h3>QR Code URL</h3>
+    <input id="qrInput" type="text" placeholder="https://your-aws-url/vote.html" style="width:300px;">
+    <button onclick="saveQR()">Save</button>
+</div>
+
 <hr>
 
 <!-- SETTINGS -->
@@ -229,6 +235,7 @@ function toggleShuffle(el){
     socket.emit('admin_control',{action:"shuffle",enabled:el.checked});
 }
 
+
 /* =========================
    POLL
 ========================= */
@@ -298,6 +305,24 @@ socket.on('video_changed', loadVideoTable);
 socket.on('leaderboard_refresh', loadVideoTable);
 
 loadVideoTable();
+
+async function loadQR(){
+    const res = await fetch('/api/qr-url');
+    const data = await res.json();
+    document.getElementById('qrInput').value = data.url || "";
+}
+
+async function saveQR(){
+    const url = document.getElementById('qrInput').value;
+
+    await fetch('/api/qr-url', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ url })
+    });
+}
+
+loadQR();
 </script>
 
 </body>

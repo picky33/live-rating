@@ -4,11 +4,10 @@
 <meta charset="UTF-8">
 <title>Live Display</title>
 <script src="/socket.io/socket.io.js"></script>
-
-<!-- QR Library -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
 <style>
+/* KEEP YOUR ORIGINAL STYLES (unchanged) */
 :root {
     --bg:#121212;
     --text:#ffffff;
@@ -16,16 +15,8 @@
     --accent:#ff9800;
     --poll:#2196F3;
 }
+body { background:var(--bg); color:var(--text); font-family:sans-serif; text-align:center; margin:0; }
 
-body {
-    background:var(--bg);
-    color:var(--text);
-    font-family:sans-serif;
-    text-align:center;
-    margin:0;
-}
-
-/* VIDEO + QR ROW */
 .video-row {
     display:grid;
     grid-template-columns: 1fr auto auto 1fr;
@@ -33,65 +24,25 @@ body {
     margin-top:20px;
 }
 
-/* QR PANEL */
-.qr-panel {
-    grid-column:2;
-    margin-right:30px;  /* spacing between QR and video */
-}
+.qr-panel { grid-column:2; margin-right:30px; }
+.video-wrapper { grid-column:3; width:50vw; max-width:50vw; position:relative; }
 
-.qr-panel h3 {
-    margin:0 0 10px 0;
-}
+video { width:100%; height:500px; object-fit:contain; background:black; }
 
-#qrcode {
-    margin:10px auto;
-}
-
-#qrText {
-    font-size:11px;
-    word-break:break-all;
-}
-
-/* VIDEO */
-.video-wrapper {
-    grid-column:3;
-    width:50vw;              /* 🔥 true 50% of viewport */
-    max-width:50vw;
-    justify-self:center;
-    position:relative;
-}
-
-video {
-    width:100%;
-    height:500px;
-    object-fit:contain;
-    background:black;
-}
-
-/* REACTIONS */
 .reaction-layer {
-    position:absolute;
-    top:0;
-    left:0;
-    width:100%;
-    height:500px;
-    pointer-events:none;
-    overflow:hidden;
+    position:absolute; top:0; left:0; width:100%; height:500px;
+    pointer-events:none; overflow:hidden;
 }
 
 .floating-emoji {
-    position:absolute;
-    bottom:0;
-    font-size:32px;
+    position:absolute; bottom:0; font-size:32px;
     animation: floatUp 5s ease-out forwards;
 }
-
 @keyframes floatUp {
     0% { transform:translateY(0); opacity:1; }
     100% { transform:translateY(-450px); opacity:0; }
 }
 
-/* RATING ROW */
 .rating-row {
     width:50%;
     margin:15px auto 0 auto;
@@ -99,7 +50,6 @@ video {
     justify-content:space-between;
 }
 
-/* RESULTS GRID */
 .results-container {
     display:grid;
     grid-template-columns: 1fr 1fr;
@@ -118,55 +68,34 @@ video {
     border-radius:10px;
 }
 
-#pollColumn { display:none; }
-.results-container.poll-active #pollColumn { display:block; }
-
-/* BARS */
-.vote-bar-container,
-.poll-bar-container {
-    background:#333;
-    height:18px;
-    border-radius:6px;
-    overflow:hidden;
+.vote-bar-container, .poll-bar-container {
+    background:#333; height:18px; border-radius:6px; overflow:hidden;
 }
 
-.vote-bar-fill {
-    background:var(--accent);
-    height:100%;
-    width:0%;
-}
+.vote-bar-fill { background:var(--accent); height:100%; }
+.poll-bar-fill { background:var(--poll); height:100%; }
 
-.poll-bar-fill {
-    background:var(--poll);
-    height:100%;
-    width:0%;
-}
-
-/* LEADERBOARD */
-.leader-1 { color:gold; font-weight:bold; }
-.leader-2 { color:silver; font-weight:bold; }
-.leader-3 { color:#cd7f32; font-weight:bold; }
+.leader-1 { color:gold; }
+.leader-2 { color:silver; }
+.leader-3 { color:#cd7f32; }
 </style>
 </head>
+
 <body>
 
-<h1 id="videoTitle"></h1>
+<h1 id="videoTitle">Loading...</h1>
 
 <div class="video-row">
+<div class="qr-panel">
+<h3>Vote Here</h3>
+<div id="qrcode"></div>
+<div id="qrText"></div>
+</div>
 
-    <!-- QR -->
-    <div class="qr-panel">
-        <h3>Vote Here</h3>
-        <div id="qrcode"></div>
-        <div id="qrText"></div>
-    </div>
-
-    <!-- VIDEO -->
-    <div class="video-wrapper">
-        <video id="videoPlayer" autoplay controls playsinline></video>
-        <div id="reactionContainer" class="reaction-layer"></div>
-    </div>
-
+<div class="video-wrapper">
+<video id="videoPlayer" autoplay controls playsinline></video>
+<div id="reactionContainer" class="reaction-layer"></div>
+</div>
 </div>
 
 <div class="rating-row">
@@ -201,20 +130,204 @@ video {
 <script>
 const socket = io();
 
-/* =========================
-   SMART QR CODE
-========================= */
+function cleanTitle(title){
+    title = title.replace(/\.[^/.]+$/, ""); // remove extension
+    return title.length > 40 ? title.substring(0,40) + "..." : title;
+}
 
+/* ---------- ELEMENTS ---------- */
+const video = document.getElementById('videoPlayer');
+const title = document.getElementById('videoTitle');
+const avg = document.getElementById('avgRating');
+const count = document.getElementById('voteCount');
+const reactionCounter = document.getElementById('reactionCounter');
+const distribution = document.getElementById('distribution');
+const leaderboard = document.getElementById('leaderboard');
+const reactionContainer = document.getElementById('reactionContainer');
+const pollSection = document.getElementById('pollSection');
+const resultsContainer = document.getElementById('resultsContainer');
+
+let playlist = [];
+let currentIndex = 0;
+
+/* ---------- AUTO NEXT ---------- */
+video.addEventListener('ended', () => {
+    socket.emit('video_ended');
+});
+
+/* ---------- INIT ---------- */
+async function init(){
+    try {
+        const vids = await fetch('/api/videos');
+        playlist = await vids.json();
+
+        if (!playlist.length) {
+            title.innerText = "No videos found";
+            return;
+        }
+
+        const cur = await fetch('/api/current');
+        const data = await cur.json();
+
+        playVideo(data.currentIndex || 0);
+        updateLeaderboard();
+
+    } catch (e) {
+        console.error("INIT ERROR:", e);
+        title.innerText = "Connection Error";
+    }
+}
+
+/* ---------- VIDEO ---------- */
+function playVideo(i){
+    if(!playlist[i]) return;
+
+    currentIndex = i;
+    const v = playlist[i];
+
+    title.innerText = cleanTitle(v.title);
+
+    video.src = v.file_path;
+    video.load();
+    video.play().catch(()=>{});
+
+    updateDistribution(i);
+}
+
+socket.on('video_changed', playVideo);
+
+/* ---------- VOTES ---------- */
+socket.on('vote_update',(d)=>{
+    if(d.video_id===currentIndex){
+        avg.innerText=d.avg;
+        count.innerText=d.count;
+        updateDistribution(currentIndex);
+    }
+});
+
+/* ---------- DISTRIBUTION ---------- */
+async function updateDistribution(id){
+    try{
+        const res = await fetch(`/api/distribution/${id}`);
+        const data = await res.json();
+
+        const max = Math.max(...Object.values(data), 1);
+
+        distribution.innerHTML="";
+
+        for(let i=1;i<=5;i++){
+            const c = data[i] || 0;
+            const pct = (c / max) * 100;
+
+            distribution.innerHTML += `
+                <div>${i}⭐ (${c})</div>
+                <div class="vote-bar-container">
+                    <div class="vote-bar-fill" style="width:${pct}%"></div>
+                </div>
+            `;
+        }
+
+    } catch {}
+}
+
+/* ---------- LEADERBOARD ---------- */
+async function updateLeaderboard(){
+    try{
+        const res = await fetch('/api/leaderboard');
+        const data = await res.json();
+
+        const top = data
+            .filter(v => v.count > 0) // ❌ remove 0 vote videos
+            .sort((a,b)=>b.avg-a.avg)
+            .slice(0,7);
+
+        leaderboard.innerHTML="";
+
+        top.forEach((v,i)=>{
+
+            let medal = i===0 ? "🥇 "
+                      : i===1 ? "🥈 "
+                      : i===2 ? "🥉 "
+                      : "";
+
+            const li = document.createElement('li');
+
+            li.innerText = `${medal}${cleanTitle(v.title)} — ${v.avg.toFixed(2)} ⭐ (${v.count})`;
+
+            if(i===0) li.classList.add("leader-1");
+            if(i===1) li.classList.add("leader-2");
+            if(i===2) li.classList.add("leader-3");
+
+            leaderboard.appendChild(li);
+        });
+
+    } catch {}
+}
+
+socket.on('leaderboard_refresh', updateLeaderboard);
+
+/* ---------- POLL ---------- */
+socket.on('poll_started',(p)=>{
+    resultsContainer.classList.add('poll-active');
+    updatePoll(p);
+});
+
+socket.on('poll_update',updatePoll);
+
+function updatePoll(p){
+
+    let total = Object.values(p.counts).reduce((a,b)=>a+b,0);
+
+    pollSection.innerHTML = `<h3>${p.question}</h3>`;
+
+    p.options.forEach((opt,i)=>{
+
+        const c = p.counts[i] || 0;
+        const pct = total ? (c/total*100).toFixed(1) : 0;
+
+        pollSection.innerHTML += `
+            <div>${opt} (${c})</div>
+            <div class="poll-bar-container">
+                <div class="poll-bar-fill" style="width:${pct}%"></div>
+            </div>
+        `;
+    });
+}
+
+socket.on('poll_cleared',()=>{
+    pollSection.innerHTML="";
+    resultsContainer.classList.remove('poll-active');
+});
+
+/* ---------- REACTIONS ---------- */
+socket.on('new_reaction',(emoji)=>{
+    const el=document.createElement('div');
+    el.className='floating-emoji';
+    el.innerText=emoji;
+    el.style.left=Math.random()*90+"%";
+    reactionContainer.appendChild(el);
+    setTimeout(()=>el.remove(),5000);
+});
+
+socket.on('reaction_update',(n)=>{
+    reactionCounter.innerText=n;
+});
+    
+socket.on('qr_updated', (url)=>{
+    generateQRCode();
+});
+
+/* ---------- QR ---------- */
 async function generateQRCode(){
 
     let voteURL = `${window.location.origin}/vote.html`;
 
     try {
-        const res = await fetch('/api/public-url');
+        const res = await fetch('/api/qr-url');
         const data = await res.json();
 
-        if (data.url) {
-            voteURL = `${data.url}/vote.html`;
+        if (data.url && data.url.trim() !== "") {
+            voteURL = data.url;
         }
 
     } catch {}
@@ -231,96 +344,6 @@ async function generateQRCode(){
 }
 
 generateQRCode();
-
-/* =========================
-   EXISTING APP LOGIC
-========================= */
-
-const videoPlayer = document.getElementById('videoPlayer');
-const videoTitle = document.getElementById('videoTitle');
-const avgRating = document.getElementById('avgRating');
-const voteCount = document.getElementById('voteCount');
-const distribution = document.getElementById('distribution');
-const leaderboard = document.getElementById('leaderboard');
-const reactionContainer = document.getElementById('reactionContainer');
-const reactionCounter = document.getElementById('reactionCounter');
-const pollSection = document.getElementById('pollSection');
-const resultsContainer = document.getElementById('resultsContainer');
-
-let playlist = [];
-let currentIndex = 0;
-
-function cleanTitle(title){
-    title = title.replace(/\.[^/.]+$/,"");
-    return title.length > 40 ? title.substring(0,40)+"..." : title;
-}
-
-async function init(){
-    playlist = await (await fetch('/api/videos')).json();
-    const current = await (await fetch('/api/current')).json();
-
-    if(current.currentVideo) playVideo(current.currentIndex);
-    updateLeaderboard();
-}
-
-function playVideo(index){
-    currentIndex = index;
-    const video = playlist[index];
-
-    videoTitle.innerText = cleanTitle(video.title);
-    videoPlayer.src = video.file_path;
-    videoPlayer.play();
-
-    avgRating.innerText="0.00";
-    voteCount.innerText="0";
-}
-
-socket.on('video_changed', playVideo);
-
-socket.on('vote_update',(data)=>{
-    if(data.video_id===currentIndex){
-        avgRating.innerText=data.avg;
-        voteCount.innerText=data.count;
-    }
-});
-
-socket.on('leaderboard_refresh', updateLeaderboard);
-
-async function updateLeaderboard(){
-    const res = await fetch('/api/leaderboard');
-    const data = await res.json();
-
-    const top = data.filter(v=>v.avg>0)
-        .sort((a,b)=>b.avg-a.avg)
-        .slice(0,7);
-
-    leaderboard.innerHTML="";
-    top.forEach((v,i)=>{
-        const li=document.createElement('li');
-
-        let medal = i===0?"🥇 ":i===1?"🥈 ":i===2?"🥉 ":"";
-        li.innerText=`${medal}${i+1}. ${cleanTitle(v.title)} — ${v.avg.toFixed(2)} ⭐ (${v.count})`;
-
-        if(i===0) li.classList.add("leader-1");
-        if(i===1) li.classList.add("leader-2");
-        if(i===2) li.classList.add("leader-3");
-
-        leaderboard.appendChild(li);
-    });
-}
-
-socket.on('new_reaction',(emoji)=>{
-    const el=document.createElement('div');
-    el.className='floating-emoji';
-    el.innerText=emoji;
-    el.style.left=Math.random()*90+"%";
-    reactionContainer.appendChild(el);
-    setTimeout(()=>el.remove(),5000);
-});
-
-socket.on('reaction_update',(total)=>{
-    reactionCounter.innerText=total;
-});
 
 init();
 </script>

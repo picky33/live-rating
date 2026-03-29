@@ -45,6 +45,7 @@ function getUserId(req, res) {
 
 let reactionCooldown = 10;
 let singleVoteMode = true;
+let qrOverrideURL = "";
 
 /* =========================
    TRACKING
@@ -232,6 +233,20 @@ app.get('/api/current',(req,res)=>{
         currentIndex:getCurrentVideoIndex(),
         currentVideo:playlist[getCurrentVideoIndex()]
     });
+});
+
+/* =========================
+   QR CODE URL (ADMIN CONTROLLED)
+========================= */
+
+app.get('/api/qr-url', (req,res)=>{
+    res.json({ url: qrOverrideURL });
+});
+
+app.post('/api/qr-url', (req,res)=>{
+    qrOverrideURL = req.body.url || "";
+    io.emit('qr_updated', qrOverrideURL); // 🔥 live update
+    res.sendStatus(200);
 });
 
 /* LEADERBOARD */
