@@ -15,14 +15,42 @@ app.use(express.static('public'));
 app.use('/videos', express.static('videos'));
 
 /* =========================
-   ENV CONFIG
+   ENV
 ========================= */
 
 const USE_REMOTE_MASTER = process.env.USE_REMOTE_MASTER === "true";
 const MASTER_URL = process.env.MASTER_URL || "http://localhost:3000";
 
 /* =========================
-   OFFLINE QUEUE
+   MYSQL
+========================= */
+
+const db = mysql.createPool({
+    host: 'db',
+    user: 'root',
+    password: 'root',
+    database: 'live_rating'
+});
+
+/* =========================
+   DB INIT
+========================= */
+
+function initDatabase() {
+    db.query(`
+        CREATE TABLE IF NOT EXISTS votes (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            video_id INT NOT NULL,
+            rating INT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    `);
+}
+
+initDatabase();
+
+/* =========================
+   OFFLINE QUEUE (AWS)
 ========================= */
 
 let offlineQueue = [];
@@ -33,7 +61,7 @@ async function sendToMaster(endpoint, data) {
         await axios.post(`${MASTER_URL}${endpoint}`, data);
         masterOnline = true;
         return true;
-    } catch (err) {
+    } catch {
         masterOnline = false;
         return false;
     }
@@ -53,46 +81,6 @@ async function flushQueue() {
 }
 
 setInterval(flushQueue, 5000);
-
-/* =========================
-   MYSQL
-========================= */
-
-const db = mysql.createPool({
-    host: 'db',
-    user: 'root',
-    password: 'root',
-    database: 'live_rating'
-});
-
-/* =========================
-   UPDATE STATS (FIX)
-========================= */
-
-function updateStats(index) {
-    db.query(
-        'SELECT AVG(rating) as avg, COUNT(*) as count FROM votes WHERE video_id = ?',
-        [index],
-        (err, results) => {
-
-            if (err) {
-                console.error("Stats error:", err);
-                return;
-            }
-
-            const avg = Number(results[0].avg) || 0;
-            const count = results[0].count || 0;
-
-            io.emit('vote_update', {
-                video_id: index,
-                avg: avg.toFixed(2),
-                count
-            });
-
-            io.emit('leaderboard_refresh');
-        }
-    );
-}
 
 /* =========================
    VIDEO SYSTEM
@@ -157,7 +145,72 @@ function toggleShuffle(enabled) {
 loadPlaylist();
 
 /* =========================
-   HELPER (PROXY HANDLER)
+   STATS
+========================= */
+
+function updateStats(index) {
+    db.query(
+        'SELECT AVG(rating) as avg, COUNT(*) as count FROM votes WHERE video_id = ?',
+        [index],
+        (err, results) => {
+
+            if (err) return;
+
+            const avg = Number(results[0].avg) || 0;
+            const count = results[0].count || 0;
+
+            io.emit('vote_update', {
+                video_id: index,
+                avg: avg.toFixed(2),
+                count
+            });
+
+            io.emit('leaderboard_refresh');
+        }
+    );
+}
+
+/* =========================
+   POLL SYSTEM (FIXED)
+========================= */
+
+let activePoll = null;
+let pollTimer = null;
+let resultsTimer = null;
+
+function startPoll(data) {
+
+    if (pollTimer) clearTimeout(pollTimer);
+    if (resultsTimer) clearTimeout(resultsTimer);
+
+    activePoll = {
+        question: data.question,
+        options: data.options,
+        counts: {},
+        votingOpen: true
+    };
+
+    data.options.forEach((_, i) => {
+        activePoll.counts[i] = 0;
+    });
+
+    io.emit('poll_started', activePoll);
+
+    pollTimer = setTimeout(() => {
+
+        activePoll.votingOpen = false;
+        io.emit('poll_closed', activePoll);
+
+        resultsTimer = setTimeout(() => {
+            activePoll = null;
+            io.emit('poll_cleared');
+        }, (data.resultsDuration || 30) * 1000);
+
+    }, (data.duration || 60) * 1000);
+}
+
+/* =========================
+   API
 ========================= */
 
 function handleProxy(endpoint, req, res, localHandler) {
@@ -175,12 +228,8 @@ function handleProxy(endpoint, req, res, localHandler) {
     res.sendStatus(200);
 }
 
-/* =========================
-   VOTE
-========================= */
-
+/* VOTE */
 app.post('/api/vote', (req, res) => {
-
     handleProxy('/api/vote', req, res, () => {
 
         const { rating } = req.body;
@@ -190,11 +239,7 @@ app.post('/api/vote', (req, res) => {
             'INSERT INTO votes (video_id, rating) VALUES (?,?)',
             [index, rating],
             (err) => {
-                if (err) {
-                    console.error("Vote insert error:", err);
-                    return res.sendStatus(500);
-                }
-
+                if (err) return res.sendStatus(500);
                 updateStats(index);
                 res.sendStatus(200);
             }
@@ -202,10 +247,7 @@ app.post('/api/vote', (req, res) => {
     });
 });
 
-/* =========================
-   REACTIONS
-========================= */
-
+/* REACTIONS */
 let totalReactions = 0;
 
 app.post('/api/reaction', (req, res) => {
@@ -223,12 +265,7 @@ app.post('/api/reaction', (req, res) => {
     res.sendStatus(200);
 });
 
-/* =========================
-   POLL SYSTEM
-========================= */
-
-let activePoll = null;
-
+/* POLL VOTE */
 app.post('/api/poll_vote', (req, res) => {
 
     handleProxy('/api/poll_vote', req, res, () => {
@@ -252,52 +289,95 @@ app.post('/api/poll_vote', (req, res) => {
    READ ROUTES
 ========================= */
 
-app.get('/api/videos', async (req,res)=>{
-    if (USE_REMOTE_MASTER) {
-        const r = await axios.get(`${MASTER_URL}/api/videos`);
-        return res.json(r.data);
-    }
-    res.json(playlist);
-});
+app.get('/api/videos', (req,res)=> res.json(playlist));
 
-app.get('/api/current', async (req,res)=>{
-    if (USE_REMOTE_MASTER) {
-        const r = await axios.get(`${MASTER_URL}/api/current`);
-        return res.json(r.data);
-    }
+app.get('/api/current', (req,res)=>{
     res.json({
         currentIndex:getCurrentVideoIndex(),
         currentVideo:playlist[getCurrentVideoIndex()]
     });
 });
 
-app.get('/api/leaderboard', async (req,res)=>{
+/* =========================
+   LEADERBOARD (FIXED)
+========================= */
+
+app.get('/api/leaderboard', async (req, res) => {
+
     if (USE_REMOTE_MASTER) {
-        const r = await axios.get(`${MASTER_URL}/api/leaderboard`);
-        return res.json(r.data);
+        try {
+            const r = await axios.get(`${MASTER_URL}/api/leaderboard`);
+            return res.json(r.data);
+        } catch {
+            return res.json([]);
+        }
     }
 
-    const data = [];
+    try {
+        const data = [];
 
-    for (let i = 0; i < playlist.length; i++) {
-        const [rows] = await db.promise().query(
-            'SELECT AVG(rating) as avg, COUNT(*) as count FROM votes WHERE video_id = ?',
-            [i]
-        );
+        for (let i = 0; i < playlist.length; i++) {
 
-        data.push({
-            id: i,
-            title: playlist[i].title,
-            avg: Number(rows[0].avg) || 0,
-            count: rows[0].count || 0
-        });
+            const [rows] = await db.promise().query(
+                'SELECT AVG(rating) as avg, COUNT(*) as count FROM votes WHERE video_id = ?',
+                [i]
+            );
+
+            data.push({
+                id: i,
+                title: playlist[i]?.title || "Unknown",
+                avg: Number(rows[0].avg) || 0,
+                count: rows[0].count || 0
+            });
+        }
+
+        res.json(data);
+
+    } catch (err) {
+        console.error("Leaderboard error:", err);
+        res.json([]);
     }
-
-    res.json(data);
 });
 
 /* =========================
-   SOCKET HANDLING
+   DISTRIBUTION (FIXED)
+========================= */
+
+app.get('/api/distribution/:id', async (req, res) => {
+
+    const videoId = parseInt(req.params.id);
+
+    if (USE_REMOTE_MASTER) {
+        try {
+            const r = await axios.get(`${MASTER_URL}/api/distribution/${videoId}`);
+            return res.json(r.data);
+        } catch {
+            return res.json({});
+        }
+    }
+
+    try {
+        const [rows] = await db.promise().query(
+            'SELECT rating, COUNT(*) as count FROM votes WHERE video_id = ? GROUP BY rating',
+            [videoId]
+        );
+
+        const result = {};
+
+        rows.forEach(r => {
+            result[r.rating] = r.count;
+        });
+
+        res.json(result);
+
+    } catch (err) {
+        console.error("Distribution error:", err);
+        res.json({});
+    }
+});
+
+/* =========================
+   SOCKET
 ========================= */
 
 if (USE_REMOTE_MASTER) {
@@ -323,18 +403,29 @@ if (USE_REMOTE_MASTER) {
 
         socket.emit('video_changed', getCurrentVideoIndex());
 
+        /* 🔥 IMPORTANT FIX */
+        if (activePoll) {
+            socket.emit('poll_started', activePoll);
+        }
+
         socket.on('video_ended', nextVideo);
 
         socket.on('admin_control', (data) => {
+
             if (data.action === "next") nextVideo();
             if (data.action === "previous") previousVideo();
             if (data.action === "shuffle") toggleShuffle(data.enabled);
+
+            /* 🔥 POLL FIX */
+            if (data.action === "start_poll") {
+                startPoll(data);
+            }
         });
     });
 }
 
 /* =========================
-   AWS STATUS BROADCAST
+   AWS STATUS
 ========================= */
 
 setInterval(() => {
