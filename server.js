@@ -15,6 +15,10 @@ app.use(express.json());
 app.use(express.static('public'));
 app.use('/videos', express.static('videos'));
 
+app.get('/api/health', (req,res)=>{
+    res.send("OK");
+});
+
 /* =========================
    ENV
 ========================= */
@@ -339,49 +343,103 @@ app.post('/api/poll_vote',(req,res)=>{
 });
 
 /* =========================
-   SOCKET (FIXED)
+   SOCKET (FULL FIX)
 ========================= */
 
-io.on('connection',(socket)=>{
+if (USE_REMOTE_MASTER) {
 
-    connectedUsers++;
-    io.emit('user_count',connectedUsers);
+    // AWS RELAY MODE
+    const remoteSocket = ioClient(MASTER_URL);
 
-    socket.emit('video_changed',getCurrentVideoIndex());
+    io.on('connection', (socket) => {
 
-    if(activePoll) socket.emit('poll_started',activePoll);
+        // Forward ALL events from local → AWS clients
+        remoteSocket.onAny((event, ...args) => {
+            socket.emit(event, ...args);
+        });
 
-    socket.emit('settings_update',{
-        reactionCooldown,
-        singleVoteMode
+        // Forward AWS → local
+        socket.onAny((event, ...args) => {
+            remoteSocket.emit(event, ...args);
+        });
+
+        socket.emit('aws_status', true);
     });
 
-    socket.on('disconnect',()=>{
-        connectedUsers--;
-        io.emit('user_count',connectedUsers);
-    });
+} else {
 
-    socket.on('video_ended',nextVideo);
+    // LOCAL MASTER MODE
 
-    socket.on('admin_control',(d)=>{
+    io.on('connection', (socket) => {
 
-        if(d.action==="next") nextVideo();
-        if(d.action==="previous") previousVideo();
-        if(d.action==="shuffle") toggleShuffle(d.enabled);
-        if(d.action==="start_poll") startPoll(d);
+        connectedUsers++;
+        io.emit('user_count', connectedUsers);
 
-        if(d.action==="set_reaction_cooldown")
-            reactionCooldown=parseInt(d.value)||0;
+        socket.emit('video_changed', getCurrentVideoIndex());
 
-        if(d.action==="toggle_single_vote")
-            singleVoteMode=d.enabled;
+        // 🔥 CRITICAL: SEND POLL STATE
+        if (activePoll) {
+            socket.emit('poll_started', activePoll);
+        }
 
-        io.emit('settings_update',{
+        socket.emit('settings_update', {
             reactionCooldown,
             singleVoteMode
         });
+
+        socket.on('disconnect', () => {
+            connectedUsers--;
+            io.emit('user_count', connectedUsers);
+        });
+
+        socket.on('video_ended', nextVideo);
+
+        socket.on('admin_control', (d) => {
+
+            if (d.action === "next") nextVideo();
+            if (d.action === "previous") previousVideo();
+            if (d.action === "shuffle") toggleShuffle(d.enabled);
+
+            if (d.action === "start_poll") {
+                startPoll(d);
+            }
+
+            if (d.action === "set_reaction_cooldown") {
+                reactionCooldown = parseInt(d.value) || 0;
+            }
+
+            if (d.action === "toggle_single_vote") {
+                singleVoteMode = d.enabled;
+            }
+
+            io.emit('settings_update', {
+                reactionCooldown,
+                singleVoteMode
+            });
+        });
     });
-});
+}
+
+/* =========================
+   AWS STATUS (FIX)
+========================= */
+
+let awsOnline = false;
+
+// Only check from LOCAL
+if (!USE_REMOTE_MASTER && MASTER_URL) {
+
+    setInterval(async () => {
+        try {
+            await axios.get(`${MASTER_URL}/api/health`);
+            awsOnline = true;
+        } catch {
+            awsOnline = false;
+        }
+
+        io.emit('aws_status', awsOnline);
+    }, 3000);
+}
 
 /* =========================
    START
