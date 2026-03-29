@@ -349,6 +349,14 @@ app.get('/api/leaderboard', async (req, res) => {
     res.json(data);
 });
 
+/* Detect AWS*/
+app.get('/api/config', (req, res) => {
+    res.json({
+        useRemote: USE_REMOTE_MASTER,
+        masterUrl: MASTER_URL || null
+    });
+});
+
 /* VIDEOS */
 app.get('/api/videos', (req, res) => res.json(playlist));
 

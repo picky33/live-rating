@@ -5,6 +5,9 @@
 <title>Live Display</title>
 <script src="/socket.io/socket.io.js"></script>
 
+<!-- QR Library -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
 <style>
 :root {
     --bg:#121212;
@@ -22,11 +25,39 @@ body {
     margin:0;
 }
 
-/* ================= VIDEO ================= */
+/* VIDEO + QR ROW */
+.video-row {
+    display:grid;
+    grid-template-columns: 1fr auto auto 1fr;
+    align-items:flex-start;
+    margin-top:20px;
+}
 
+/* QR PANEL */
+.qr-panel {
+    grid-column:2;
+    margin-right:30px;  /* spacing between QR and video */
+}
+
+.qr-panel h3 {
+    margin:0 0 10px 0;
+}
+
+#qrcode {
+    margin:10px auto;
+}
+
+#qrText {
+    font-size:11px;
+    word-break:break-all;
+}
+
+/* VIDEO */
 .video-wrapper {
-    width:50%;
-    margin:0 auto;
+    grid-column:3;
+    width:50vw;              /* 🔥 true 50% of viewport */
+    max-width:50vw;
+    justify-self:center;
     position:relative;
 }
 
@@ -37,6 +68,7 @@ video {
     background:black;
 }
 
+/* REACTIONS */
 .reaction-layer {
     position:absolute;
     top:0;
@@ -59,28 +91,21 @@ video {
     100% { transform:translateY(-450px); opacity:0; }
 }
 
-/* ================= RATING ROW ================= */
-
+/* RATING ROW */
 .rating-row {
     width:50%;
     margin:15px auto 0 auto;
     display:flex;
     justify-content:space-between;
-    align-items:center;
 }
 
-.rating-left { text-align:left; }
-.rating-right { text-align:right; font-size:18px; }
-
-/* ================= RESULTS GRID ================= */
-
+/* RESULTS GRID */
 .results-container {
     display:grid;
     grid-template-columns: 1fr 1fr;
     gap:40px;
     width:90%;
     margin:40px auto;
-    text-align:left;
 }
 
 .results-container.poll-active {
@@ -96,7 +121,7 @@ video {
 #pollColumn { display:none; }
 .results-container.poll-active #pollColumn { display:block; }
 
-/* Bars */
+/* BARS */
 .vote-bar-container,
 .poll-bar-container {
     background:#333;
@@ -117,44 +142,39 @@ video {
     width:0%;
 }
 
-/* ================= LEADERBOARD STYLING ================= */
-
-#leaderboard li {
-    margin-bottom:8px;
-}
-
-.leader-1 {
-    color:gold;
-    font-weight:bold;
-}
-
-.leader-2 {
-    color:silver;
-    font-weight:bold;
-}
-
-.leader-3 {
-    color:#cd7f32; /* bronze */
-    font-weight:bold;
-}
+/* LEADERBOARD */
+.leader-1 { color:gold; font-weight:bold; }
+.leader-2 { color:silver; font-weight:bold; }
+.leader-3 { color:#cd7f32; font-weight:bold; }
 </style>
 </head>
 <body>
 
 <h1 id="videoTitle"></h1>
 
-<div class="video-wrapper">
-    <video id="videoPlayer" autoplay controls playsinline></video>
-    <div id="reactionContainer" class="reaction-layer"></div>
+<div class="video-row">
+
+    <!-- QR -->
+    <div class="qr-panel">
+        <h3>Vote Here</h3>
+        <div id="qrcode"></div>
+    </div>
+
+    <!-- VIDEO -->
+    <div class="video-wrapper">
+        <video id="videoPlayer" autoplay controls playsinline></video>
+        <div id="reactionContainer" class="reaction-layer"></div>
+    </div>
+
 </div>
 
 <div class="rating-row">
-    <div class="rating-left">
+    <div>
         <h2>Average Rating: <span id="avgRating">0.00</span></h2>
         <h3>Total Votes: <span id="voteCount">0</span></h3>
     </div>
 
-    <div class="rating-right">
+    <div>
         🔥 Reactions: <span id="reactionCounter">0</span>
     </div>
 </div>
@@ -180,118 +200,126 @@ video {
 <script>
 const socket = io();
 
-const resultsContainer = document.getElementById('resultsContainer');
-const pollSection = document.getElementById('pollSection');
-const reactionContainer = document.getElementById('reactionContainer');
-const reactionCounter = document.getElementById('reactionCounter');
-const distribution = document.getElementById('distribution');
-const leaderboard = document.getElementById('leaderboard');
+/* =========================
+   SMART QR CODE
+========================= */
+
+async function generateQRCode(){
+
+    let voteURL;
+
+    try {
+        const res = await fetch('/api/current');
+        await res.json();
+
+        // If we are on AWS (public IP), use this host
+        const host = window.location.hostname;
+
+        // Detect local vs AWS
+        if (
+            host === "localhost" ||
+            host.startsWith("192.") ||
+            host.startsWith("10.") ||
+            host.startsWith("172.")
+        ) {
+            // LOCAL → fallback
+            voteURL = `${window.location.origin}/vote.html`;
+        } else {
+            // AWS → use public host
+            voteURL = `${window.location.origin}/vote.html`;
+        }
+
+    } catch {
+        voteURL = `${window.location.origin}/vote.html`;
+    }
+
+    new QRCode(document.getElementById("qrcode"), {
+        text: voteURL,
+        width: 140,
+        height: 140
+    });
+
+}
+
+generateQRCode();
+
+/* =========================
+   EXISTING APP LOGIC
+========================= */
+
 const videoPlayer = document.getElementById('videoPlayer');
 const videoTitle = document.getElementById('videoTitle');
 const avgRating = document.getElementById('avgRating');
 const voteCount = document.getElementById('voteCount');
+const distribution = document.getElementById('distribution');
+const leaderboard = document.getElementById('leaderboard');
+const reactionContainer = document.getElementById('reactionContainer');
+const reactionCounter = document.getElementById('reactionCounter');
+const pollSection = document.getElementById('pollSection');
+const resultsContainer = document.getElementById('resultsContainer');
 
 let playlist = [];
 let currentIndex = 0;
-
-/* INIT */
-async function init(){
-    playlist = await (await fetch('/api/videos')).json();
-    const current = await (await fetch('/api/current')).json();
-    if(current.currentVideo) playVideo(current.currentIndex);
-    updateLeaderboard();
-}
 
 function cleanTitle(title){
     title = title.replace(/\.[^/.]+$/,"");
     return title.length > 40 ? title.substring(0,40)+"..." : title;
 }
 
+async function init(){
+    playlist = await (await fetch('/api/videos')).json();
+    const current = await (await fetch('/api/current')).json();
+
+    if(current.currentVideo) playVideo(current.currentIndex);
+    updateLeaderboard();
+}
+
 function playVideo(index){
     currentIndex = index;
     const video = playlist[index];
-    if(!video) return;
 
     videoTitle.innerText = cleanTitle(video.title);
     videoPlayer.src = video.file_path;
-    videoPlayer.load();
-    videoPlayer.play().catch(()=>{});
+    videoPlayer.play();
 
     avgRating.innerText="0.00";
     voteCount.innerText="0";
-    distribution.innerHTML="";
 }
 
-videoPlayer.addEventListener('ended',()=>socket.emit('video_ended'));
-socket.on('video_changed',playVideo);
+socket.on('video_changed', playVideo);
 
-/* RATINGS */
 socket.on('vote_update',(data)=>{
-    if(data.video_id === currentIndex){
-        avgRating.innerText = data.avg;
-        voteCount.innerText = data.count;
-        updateDistribution();
+    if(data.video_id===currentIndex){
+        avgRating.innerText=data.avg;
+        voteCount.innerText=data.count;
     }
 });
 
-/* DISTRIBUTION */
-async function updateDistribution(){
-    const res = await fetch(`/api/distribution/${currentIndex}`);
-    const data = await res.json();
-    const total = Object.values(data).reduce((a,b)=>a+b,0);
-
-    distribution.innerHTML="";
-
-    for(let star=5; star>=1; star--){
-        const count = data[star] || 0;
-        const percent = total ? (count/total)*100 : 0;
-
-        const row = document.createElement('div');
-        row.innerHTML = `
-        ${star} ⭐ (${count})
-        <div class="vote-bar-container">
-            <div class="vote-bar-fill"></div>
-        </div>`;
-
-        distribution.appendChild(row);
-        row.querySelector('.vote-bar-fill').style.width = percent + "%";
-    }
-}
-
-/* ================= LEADERBOARD (Top 7 + Medals) ================= */
-
-socket.on('leaderboard_refresh',updateLeaderboard);
+socket.on('leaderboard_refresh', updateLeaderboard);
 
 async function updateLeaderboard(){
     const res = await fetch('/api/leaderboard');
     const data = await res.json();
 
-    const top = data
-        .filter(v=>v.avg>0)
+    const top = data.filter(v=>v.avg>0)
         .sort((a,b)=>b.avg-a.avg)
         .slice(0,7);
 
     leaderboard.innerHTML="";
-
-    top.forEach((v,index)=>{
+    top.forEach((v,i)=>{
         const li=document.createElement('li');
 
-        let medal="";
-        if(index===0) medal="🥇 ";
-        if(index===1) medal="🥈 ";
-        if(index===2) medal="🥉 ";
+        let medal = i===0?"🥇 ":i===1?"🥈 ":i===2?"🥉 ":"";
+        li.innerText=`${medal}${i+1}. ${cleanTitle(v.title)} — ${v.avg.toFixed(2)} ⭐ (${v.count})`;
 
-        li.innerText=`${medal}${index+1}. ${cleanTitle(v.title)} — ${v.avg.toFixed(2)} ⭐ (${v.count})`;
-
-        if(index===0) li.classList.add("leader-1");
-        if(index===1) li.classList.add("leader-2");
-        if(index===2) li.classList.add("leader-3");
+        if(i===0) li.classList.add("leader-1");
+        if(i===1) li.classList.add("leader-2");
+        if(i===2) li.classList.add("leader-3");
 
         leaderboard.appendChild(li);
     });
 }
 
-/* REACTIONS */
 socket.on('new_reaction',(emoji)=>{
     const el=document.createElement('div');
     el.className='floating-emoji';
@@ -302,43 +330,11 @@ socket.on('new_reaction',(emoji)=>{
 });
 
 socket.on('reaction_update',(total)=>{
-    reactionCounter.innerText = total;
+    reactionCounter.innerText=total;
 });
-
-/* POLL */
-socket.on('poll_started',(poll)=>{
-    resultsContainer.classList.add('poll-active');
-    renderPoll(poll);
-});
-
-socket.on('poll_update',renderPoll);
-socket.on('poll_closed',renderPoll);
-
-socket.on('poll_cleared',()=>{
-    pollSection.innerHTML="";
-    resultsContainer.classList.remove('poll-active');
-});
-
-function renderPoll(poll){
-    const total = Object.values(poll.counts).reduce((a,b)=>a+b,0);
-    pollSection.innerHTML=`<h2>${poll.question}</h2>`;
-
-    poll.options.forEach((opt,i)=>{
-        const count = poll.counts[i] || 0;
-        const percent = total ? (count/total)*100 : 0;
-
-        const row=document.createElement('div');
-        row.innerHTML=`${opt} (${count})
-        <div class="poll-bar-container">
-            <div class="poll-bar-fill"></div>
-        </div>`;
-        pollSection.appendChild(row);
-
-        row.querySelector('.poll-bar-fill').style.width = percent + "%";
-    });
-}
 
 init();
 </script>
+
 </body>
 </html>
