@@ -313,17 +313,22 @@ app.post('/api/reaction', (req, res) => {
 
     if (reactionCooldown > 0) {
         const last = reactionTimestamps[userId] || 0;
+
         if (now - last < reactionCooldown * 1000) {
             return res.status(429).send("Cooldown");
         }
+
         reactionTimestamps[userId] = now;
     }
 
-    io.emit('new_reaction', req.body.emoji);
-    totalReactions++;
-    io.emit('reaction_update', totalReactions);
+    handleProxy('/api/reaction', req, res, () => {
 
-    res.sendStatus(200);
+        totalReactions++;
+        io.emit('new_reaction', req.body.emoji);
+        io.emit('reaction_update', totalReactions);
+
+        res.sendStatus(200);
+    });
 });
 
 /* DISTRIBUTION */
@@ -484,33 +489,34 @@ server.listen(3000, '0.0.0.0', () => {
    PUBLIC URL (FOR QR)
 ========================= */
 
+/* =========================
+   PUBLIC URL (QR FIX)
+========================= */
+
 let publicURL = null;
 
-function fetchPublicIP() {
+async function initPublicURL() {
 
-    if (!USE_REMOTE_MASTER) return;
-
-    https.get('https://api.ipify.org', (res) => {
-
-        let data = '';
-
-        res.on('data', chunk => data += chunk);
-
-        res.on('end', () => {
-            const ip = data.trim();
-            publicURL = `http://${ip}:3000`;
+    // AWS mode → get own public IP
+    if (USE_REMOTE_MASTER) {
+        try {
+            const res = await axios.get('https://api.ipify.org');
+            publicURL = `http://${res.data}:3000`;
             console.log(`🌐 Public Vote URL: ${publicURL}/vote.html`);
-        });
+        } catch {
+            console.log("Failed to fetch AWS public IP");
+        }
+    }
 
-    }).on('error', () => {
-        console.log("Failed to fetch public IP");
-    });
+    // LOCAL mode → use AWS MASTER_URL
+    else if (MASTER_URL) {
+        publicURL = MASTER_URL;
+        console.log(`🌐 Using AWS Relay URL: ${publicURL}/vote.html`);
+    }
 }
 
-fetchPublicIP();
+initPublicURL();
 
 app.get('/api/public-url', (req,res)=>{
-    res.json({
-        url: publicURL
-    });
+    res.json({ url: publicURL });
 });

@@ -158,6 +158,7 @@ video {
     <div class="qr-panel">
         <h3>Vote Here</h3>
         <div id="qrcode"></div>
+        <div id="qrText"></div>
     </div>
 
     <!-- VIDEO -->
@@ -225,6 +226,8 @@ async function generateQRCode(){
         width: 140,
         height: 140
     });
+
+    document.getElementById("qrText").innerText = voteURL;
 }
 
 generateQRCode();
