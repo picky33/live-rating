@@ -486,8 +486,6 @@ server.listen(3000, '0.0.0.0', () => {
 
 let publicURL = null;
 
-const https = require('https');
-
 function fetchPublicIP() {
 
     if (!USE_REMOTE_MASTER) return;
