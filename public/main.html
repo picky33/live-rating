@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Live Display</title>
+<script src="/socket.io/socket.io.js"></script>
+
+<style>
+:root {
+    --bg:#121212;
+    --text:#ffffff;
+    --card:#1e1e1e;
+    --accent:#ff9800;
+    --poll:#2196F3;
+}
+
+body {
+    background:var(--bg);
+    color:var(--text);
+    font-family:sans-serif;
+    text-align:center;
+    margin:0;
+}
+
+/* ================= VIDEO ================= */
+
+.video-wrapper {
+    width:50%;
+    margin:0 auto;
+    position:relative;
+}
+
+video {
+    width:100%;
+    height:500px;
+    object-fit:contain;
+    background:black;
+}
+
+.reaction-layer {
+    position:absolute;
+    top:0;
+    left:0;
+    width:100%;
+    height:500px;
+    pointer-events:none;
+    overflow:hidden;
+}
+
+.floating-emoji {
+    position:absolute;
+    bottom:0;
+    font-size:32px;
+    animation: floatUp 5s ease-out forwards;
+}
+
+@keyframes floatUp {
+    0% { transform:translateY(0); opacity:1; }
+    100% { transform:translateY(-450px); opacity:0; }
+}
+
+/* ================= RATING ROW ================= */
+
+.rating-row {
+    width:50%;
+    margin:15px auto 0 auto;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+}
+
+.rating-left { text-align:left; }
+.rating-right { text-align:right; font-size:18px; }
+
+/* ================= RESULTS GRID ================= */
+
+.results-container {
+    display:grid;
+    grid-template-columns: 1fr 1fr;
+    gap:40px;
+    width:90%;
+    margin:40px auto;
+    text-align:left;
+}
+
+.results-container.poll-active {
+    grid-template-columns: 1fr 1fr 1fr;
+}
+
+.results-column {
+    background:var(--card);
+    padding:15px;
+    border-radius:10px;
+}
+
+#pollColumn { display:none; }
+.results-container.poll-active #pollColumn { display:block; }
+
+/* Bars */
+.vote-bar-container,
+.poll-bar-container {
+    background:#333;
+    height:18px;
+    border-radius:6px;
+    overflow:hidden;
+}
+
+.vote-bar-fill {
+    background:var(--accent);
+    height:100%;
+    width:0%;
+}
+
+.poll-bar-fill {
+    background:var(--poll);
+    height:100%;
+    width:0%;
+}
+
+/* ================= LEADERBOARD STYLING ================= */
+
+#leaderboard li {
+    margin-bottom:8px;
+}
+
+.leader-1 {
+    color:gold;
+    font-weight:bold;
+}
+
+.leader-2 {
+    color:silver;
+    font-weight:bold;
+}
+
+.leader-3 {
+    color:#cd7f32; /* bronze */
+    font-weight:bold;
+}
+</style>
+</head>
+<body>
+
+<h1 id="videoTitle"></h1>
+
+<div class="video-wrapper">
+    <video id="videoPlayer" autoplay controls playsinline></video>
+    <div id="reactionContainer" class="reaction-layer"></div>
+</div>
+
+<div class="rating-row">
+    <div class="rating-left">
+        <h2>Average Rating: <span id="avgRating">0.00</span></h2>
+        <h3>Total Votes: <span id="voteCount">0</span></h3>
+    </div>
+
+    <div class="rating-right">
+        🔥 Reactions: <span id="reactionCounter">0</span>
+    </div>
+</div>
+
+<div class="results-container" id="resultsContainer">
+
+<div class="results-column">
+<h2>Vote Breakdown</h2>
+<div id="distribution"></div>
+</div>
+
+<div class="results-column">
+<h2>Top 7 Videos</h2>
+<ol id="leaderboard"></ol>
+</div>
+
+<div class="results-column" id="pollColumn">
+<div id="pollSection"></div>
+</div>
+
+</div>
+
+<script>
+const socket = io();
+
+const resultsContainer = document.getElementById('resultsContainer');
+const pollSection = document.getElementById('pollSection');
+const reactionContainer = document.getElementById('reactionContainer');
+const reactionCounter = document.getElementById('reactionCounter');
+const distribution = document.getElementById('distribution');
+const leaderboard = document.getElementById('leaderboard');
+const videoPlayer = document.getElementById('videoPlayer');
+const videoTitle = document.getElementById('videoTitle');
+const avgRating = document.getElementById('avgRating');
+const voteCount = document.getElementById('voteCount');
+
+let playlist = [];
+let currentIndex = 0;
+
+/* INIT */
+async function init(){
+    playlist = await (await fetch('/api/videos')).json();
+    const current = await (await fetch('/api/current')).json();
+    if(current.currentVideo) playVideo(current.currentIndex);
+    updateLeaderboard();
+}
+
+function cleanTitle(title){
+    title = title.replace(/\.[^/.]+$/,"");
+    return title.length > 40 ? title.substring(0,40)+"..." : title;
+}
+
+function playVideo(index){
+    currentIndex = index;
+    const video = playlist[index];
+    if(!video) return;
+
+    videoTitle.innerText = cleanTitle(video.title);
+    videoPlayer.src = video.file_path;
+    videoPlayer.load();
+    videoPlayer.play().catch(()=>{});
+
+    avgRating.innerText="0.00";
+    voteCount.innerText="0";
+    distribution.innerHTML="";
+}
+
+videoPlayer.addEventListener('ended',()=>socket.emit('video_ended'));
+socket.on('video_changed',playVideo);
+
+/* RATINGS */
+socket.on('vote_update',(data)=>{
+    if(data.video_id === currentIndex){
+        avgRating.innerText = data.avg;
+        voteCount.innerText = data.count;
+        updateDistribution();
+    }
+});
+
+/* DISTRIBUTION */
+async function updateDistribution(){
+    const res = await fetch(`/api/distribution/${currentIndex}`);
+    const data = await res.json();
+    const total = Object.values(data).reduce((a,b)=>a+b,0);
+
+    distribution.innerHTML="";
+
+    for(let star=5; star>=1; star--){
+        const count = data[star] || 0;
+        const percent = total ? (count/total)*100 : 0;
+
+        const row = document.createElement('div');
+        row.innerHTML = `
+        ${star} ⭐ (${count})
+        <div class="vote-bar-container">
+            <div class="vote-bar-fill"></div>
+        </div>`;
+
+        distribution.appendChild(row);
+        row.querySelector('.vote-bar-fill').style.width = percent + "%";
+    }
+}
+
+/* ================= LEADERBOARD (Top 7 + Medals) ================= */
+
+socket.on('leaderboard_refresh',updateLeaderboard);
+
+async function updateLeaderboard(){
+    const res = await fetch('/api/leaderboard');
+    const data = await res.json();
+
+    const top = data
+        .filter(v=>v.avg>0)
+        .sort((a,b)=>b.avg-a.avg)
+        .slice(0,7);
+
+    leaderboard.innerHTML="";
+
+    top.forEach((v,index)=>{
+        const li=document.createElement('li');
+
+        let medal="";
+        if(index===0) medal="🥇 ";
+        if(index===1) medal="🥈 ";
+        if(index===2) medal="🥉 ";
+
+        li.innerText=`${medal}${index+1}. ${cleanTitle(v.title)} — ${v.avg.toFixed(2)} ⭐ (${v.count})`;
+
+        if(index===0) li.classList.add("leader-1");
+        if(index===1) li.classList.add("leader-2");
+        if(index===2) li.classList.add("leader-3");
+
+        leaderboard.appendChild(li);
+    });
+}
+
+/* REACTIONS */
+socket.on('new_reaction',(emoji)=>{
+    const el=document.createElement('div');
+    el.className='floating-emoji';
+    el.innerText=emoji;
+    el.style.left=Math.random()*90+"%";
+    reactionContainer.appendChild(el);
+    setTimeout(()=>el.remove(),5000);
+});
+
+socket.on('reaction_update',(total)=>{
+    reactionCounter.innerText = total;
+});
+
+/* POLL */
+socket.on('poll_started',(poll)=>{
+    resultsContainer.classList.add('poll-active');
+    renderPoll(poll);
+});
+
+socket.on('poll_update',renderPoll);
+socket.on('poll_closed',renderPoll);
+
+socket.on('poll_cleared',()=>{
+    pollSection.innerHTML="";
+    resultsContainer.classList.remove('poll-active');
+});
+
+function renderPoll(poll){
+    const total = Object.values(poll.counts).reduce((a,b)=>a+b,0);
+    pollSection.innerHTML=`<h2>${poll.question}</h2>`;
+
+    poll.options.forEach((opt,i)=>{
+        const count = poll.counts[i] || 0;
+        const percent = total ? (count/total)*100 : 0;
+
+        const row=document.createElement('div');
+        row.innerHTML=`${opt} (${count})
+        <div class="poll-bar-container">
+            <div class="poll-bar-fill"></div>
+        </div>`;
+        pollSection.appendChild(row);
+
+        row.querySelector('.poll-bar-fill').style.width = percent + "%";
+    });
+}
+
+init();
+</script>
+</body>
+</html>

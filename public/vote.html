@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vote</title>
+<script src="/socket.io/socket.io.js"></script>
+
+<style>
+:root {
+    --bg: #121212;
+    --text: #ffffff;
+    --card: #1e1e1e;
+    --accent: #ff9800;
+    --poll: #2196F3;
+    --reaction: #333;
+}
+
+body {
+    font-family:sans-serif;
+    text-align:center;
+    padding:20px;
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    transition:background 0.3s, color 0.3s;
+}
+
+.section { margin:25px 0; }
+
+/* Poll Buttons */
+#pollOptions button {
+    width:100%;
+    font-size:18px;
+    padding:14px;
+    margin:6px 0;
+    border:none;
+    border-radius:8px;
+    background:var(--poll);
+    color:white;
+}
+
+#pollOptions button:disabled {
+    background:#777;
+}
+
+/* Rating Buttons (smaller) */
+.rating-buttons button {
+    width:100%;
+    font-size:20px;
+    padding:12px;
+    margin:5px 0;
+    border:none;
+    border-radius:8px;
+    background:var(--accent);
+    color:white;
+}
+
+/* Reaction Grid */
+.reaction-grid {
+    display:grid;
+    grid-template-columns: repeat(5,1fr);
+    gap:8px;
+}
+
+.reaction-grid button {
+    font-size:22px;
+    padding:10px;
+    border:none;
+    border-radius:8px;
+    background:var(--reaction);
+    color:white;
+}
+
+button {
+    touch-action: manipulation;
+    cursor:pointer;
+}
+
+/* Theme Toggle */
+.theme-toggle {
+    margin-top:40px;
+    font-size:14px;
+    opacity:0.8;
+}
+
+.theme-toggle button {
+    padding:8px 14px;
+    border:none;
+    border-radius:6px;
+    background:#444;
+    color:white;
+}
+</style>
+</head>
+<body>
+
+<!-- POLL (TOP) -->
+<div class="section">
+<h2 id="pollQuestion"></h2>
+<div id="pollOptions"></div>
+</div>
+
+<h1>Rate This Video</h1>
+
+<div class="section rating-buttons">
+<button onclick="vote(1)">⭐</button>
+<button onclick="vote(2)">⭐⭐</button>
+<button onclick="vote(3)">⭐⭐⭐</button>
+<button onclick="vote(4)">⭐⭐⭐⭐</button>
+<button onclick="vote(5)">⭐⭐⭐⭐⭐</button>
+</div>
+
+<div class="section">
+<h2>React</h2>
+<div class="reaction-grid">
+<button onclick="react('🔥')">🔥</button>
+<button onclick="react('😂')">😂</button>
+<button onclick="react('👏')">👏</button>
+<button onclick="react('😮')">😮</button>
+<button onclick="react('🫡')">🫡</button>
+<button onclick="react('😢')">😢</button>
+<button onclick="react('👀')">👀</button>
+<button onclick="react('💯')">💯</button>
+<button onclick="react('👍')">👍</button>
+<button onclick="react('👎')">👎</button>
+</div>
+</div>
+
+<!-- DARK/LIGHT TOGGLE -->
+<div class="theme-toggle">
+<button onclick="toggleTheme()">Toggle Light / Dark Mode</button>
+</div>
+
+<script>
+const socket = io();
+
+/* =========================
+   THEME SYSTEM
+========================= */
+
+function setLightMode() {
+    document.documentElement.style.setProperty('--bg','#ffffff');
+    document.documentElement.style.setProperty('--text','#000000');
+    document.documentElement.style.setProperty('--card','#f5f5f5');
+    document.documentElement.style.setProperty('--reaction','#ddd');
+    localStorage.setItem('theme','light');
+}
+
+function setDarkMode() {
+    document.documentElement.style.setProperty('--bg','#121212');
+    document.documentElement.style.setProperty('--text','#ffffff');
+    document.documentElement.style.setProperty('--card','#1e1e1e');
+    document.documentElement.style.setProperty('--reaction','#333');
+    localStorage.setItem('theme','dark');
+}
+
+function toggleTheme() {
+    if(localStorage.getItem('theme') === 'light') {
+        setDarkMode();
+    } else {
+        setLightMode();
+    }
+}
+
+/* Load saved theme */
+if(localStorage.getItem('theme') === 'light') {
+    setLightMode();
+} else {
+    setDarkMode();
+}
+
+/* =========================
+   POLL EVENTS
+========================= */
+socket.on('poll_started', renderPoll);
+
+socket.on('poll_closed', ()=>{
+    disableButtons();
+    document.getElementById('pollQuestion').innerText += " (Voting Closed)";
+});
+
+socket.on('poll_cleared', ()=>{
+    document.getElementById('pollQuestion').innerText="";
+    document.getElementById('pollOptions').innerHTML="";
+});
+
+function renderPoll(poll){
+    document.getElementById('pollQuestion').innerText=poll.question;
+    const container=document.getElementById('pollOptions');
+    container.innerHTML="";
+
+    poll.options.forEach((opt,i)=>{
+        const btn=document.createElement('button');
+        btn.innerText=opt;
+        btn.onclick=()=>submitVote(i,btn);
+        container.appendChild(btn);
+    });
+}
+
+function disableButtons(){
+    document.querySelectorAll('#pollOptions button')
+        .forEach(btn=>btn.disabled=true);
+}
+
+async function submitVote(index,btn){
+    if(navigator.vibrate) navigator.vibrate(50);
+    btn.innerText="✔ Submitted";
+    btn.style.background="#4CAF50";
+    disableButtons();
+
+    await fetch('/api/poll_vote',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({optionIndex:index})
+    });
+}
+
+/* =========================
+   VIDEO RATING
+========================= */
+async function vote(rating){
+    if(navigator.vibrate) navigator.vibrate(30);
+    await fetch('/api/vote',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({rating})
+    });
+}
+
+/* =========================
+   REACTIONS
+========================= */
+async function react(emoji){
+    if(navigator.vibrate) navigator.vibrate(20);
+    await fetch('/api/reaction',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({emoji})
+    });
+}
+</script>
+
+</body>
+</html>

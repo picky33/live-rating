@@ -1,0 +1,18 @@
+live-rating/
+│
+├── docker-compose.yml
+├── Dockerfile
+├── package.json
+├── server.js
+├── init.sql
+│
+├── public/
+│   ├── main.html
+│   ├── vote.html
+│   ├── admin.html
+│   └── style.css
+
+
+
+/Users/nicholasharman/Downloads/Converted:/app/videos
+/Users/nicholasharman/Movies/Anime OP_ED_INTRO_and_More:/app/videos

@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Admin Panel</title>
+<script src="/socket.io/socket.io.js"></script>
+
+<style>
+:root {
+    --bg:#121212;
+    --text:#ffffff;
+    --card:#1e1e1e;
+    --accent:#2196F3;
+}
+
+body {
+    background:var(--bg);
+    color:var(--text);
+    font-family:sans-serif;
+    text-align:center;
+    margin:0;
+}
+
+button {
+    padding:8px 14px;
+    border:none;
+    border-radius:6px;
+    background:var(--accent);
+    color:white;
+    cursor:pointer;
+}
+
+input {
+    padding:6px;
+    border-radius:4px;
+    border:1px solid #444;
+    background:#1e1e1e;
+    color:white;
+}
+
+table {
+    width:80%;
+    margin:30px auto;
+    border-collapse:collapse;
+    background:var(--card);
+    border-radius:8px;
+    overflow:hidden;
+}
+
+th,td {
+    border:1px solid #333;
+    padding:8px;
+    text-align:center;
+}
+
+th { background:#1a1a1a; }
+
+.current-row {
+    background:#1e1e1e;
+    color:#4CAF50;
+    font-weight:bold;
+}
+
+/* AWS STATUS */
+#awsStatus {
+    margin:10px;
+    font-size:18px;
+}
+</style>
+</head>
+<body>
+
+<h1>Admin Panel</h1>
+
+<!-- AWS STATUS -->
+<div id="awsStatus">
+AWS Connection: <span id="awsLed">🔴</span>
+</div>
+
+<div>
+<button onclick="previousVideo()">⏮ Previous</button>
+<button onclick="nextVideo()">⏭ Next</button>
+</div>
+
+<div style="margin-top:10px;">
+<label>
+<input type="checkbox" id="shuffleToggle" checked onchange="toggleShuffle(this)">
+Shuffle Playback (Default ON)
+</label>
+</div>
+
+<hr>
+
+<h2>Send Live Question</h2>
+
+<input type="text" id="pollQuestion" placeholder="Enter question" style="width:60%"><br><br>
+
+<input type="text" id="opt1" placeholder="Option 1">
+<input type="text" id="opt2" placeholder="Option 2">
+<input type="text" id="opt3" placeholder="Option 3">
+<input type="text" id="opt4" placeholder="Option 4"><br><br>
+
+Vote Duration:
+<input type="number" id="voteDuration" value="60">
+
+Results Duration:
+<input type="number" id="resultsDuration" value="30">
+
+<button onclick="sendPoll()">Start Poll</button>
+
+<hr>
+
+<h2>All Videos</h2>
+
+<table>
+<thead>
+<tr>
+<th>Status</th>
+<th>Title</th>
+<th>Average</th>
+<th>Votes</th>
+</tr>
+</thead>
+<tbody id="videoTable"></tbody>
+</table>
+
+<script>
+const socket = io();
+let currentIndex = 0;
+
+/* =========================
+   AWS LED STATUS
+========================= */
+
+socket.on('aws_status', (online)=>{
+    document.getElementById('awsLed').innerText = online ? "🟢" : "🔴";
+});
+
+/* Hide if not AWS mode */
+fetch('/api/current')
+.then(res=>res.json())
+.then(()=>{
+    // If local mode, hide LED
+    if (location.hostname === "localhost" || location.hostname.startsWith("192.")) {
+        document.getElementById('awsStatus').style.display = "none";
+    }
+});
+
+/* =========================
+   HELPERS
+========================= */
+
+function cleanTitle(title){
+    title = title.replace(/\.[^/.]+$/,"");
+    return title.length > 40 ? title.substring(0,40)+"..." : title;
+}
+
+/* =========================
+   CONTROLS
+========================= */
+
+function nextVideo(){
+    socket.emit('admin_control',{action:"next"});
+}
+
+function previousVideo(){
+    socket.emit('admin_control',{action:"previous"});
+}
+
+function toggleShuffle(el){
+    socket.emit('admin_control',{action:"shuffle",enabled:el.checked});
+}
+
+/* =========================
+   POLL
+========================= */
+
+function sendPoll(){
+
+    const question = document.getElementById('pollQuestion').value;
+
+    const options = [
+        opt1.value,
+        opt2.value,
+        opt3.value,
+        opt4.value
+    ].filter(o => o.trim() !== '');
+
+    socket.emit('admin_control',{
+        action:"start_poll",
+        question,
+        options,
+        duration: parseInt(voteDuration.value)||60,
+        resultsDuration: parseInt(resultsDuration.value)||30
+    });
+}
+
+/* =========================
+   VIDEO TABLE
+========================= */
+
+async function loadVideoTable(){
+
+    const videos = await (await fetch('/api/videos')).json();
+    const leaderboard = await (await fetch('/api/leaderboard')).json();
+    const current = await (await fetch('/api/current')).json();
+
+    currentIndex = current.currentIndex;
+
+    const table = document.getElementById('videoTable');
+    table.innerHTML="";
+
+    videos.forEach(video=>{
+
+        const stats = leaderboard.find(v=>v.id===video.id) || {avg:0,count:0};
+
+        const row = document.createElement('tr');
+
+        if(video.id === currentIndex){
+            row.classList.add('current-row');
+        }
+
+        row.innerHTML=`
+        <td>${video.id===currentIndex?'▶':''}</td>
+        <td>${cleanTitle(video.title)}</td>
+        <td>${stats.avg.toFixed(2)}</td>
+        <td>${stats.count}</td>
+        `;
+
+        table.appendChild(row);
+    });
+}
+
+socket.on('video_changed', loadVideoTable);
+socket.on('leaderboard_refresh', loadVideoTable);
+
+loadVideoTable();
+</script>
+
+</body>
+</html>

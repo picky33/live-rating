@@ -1,0 +1,16 @@
+CREATE DATABASE IF NOT EXISTS live_rating;
+USE live_rating;
+
+CREATE TABLE votes (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    video_id INT NOT NULL,
+    rating INT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE reactions (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    video_id INT NOT NULL,
+    emoji VARCHAR(10),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

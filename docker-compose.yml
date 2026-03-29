@@ -1,0 +1,47 @@
+version: "3.8"
+
+services:
+
+  app:
+    build: .
+    container_name: voting_app
+    ports:
+      - "3000:3000"
+    environment:
+      - USE_REMOTE_MASTER=${USE_REMOTE_MASTER:-true}
+      - MASTER_URL=${MASTER_URL:-http://100.100.100.100:3000}
+    volumes:
+      - /Users/nicholasharman/Movies/Anime OP_ED_INTRO_and_More:/app/videos
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: always
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/current"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  db:
+    image: mysql:8
+    container_name: voting_db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: live_rating
+    ports:
+      - "3306:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-proot"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+volumes:
+  db_data:

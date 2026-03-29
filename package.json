@@ -1,0 +1,16 @@
+{
+  "name": "live-rating-app",
+  "version": "2.0.0",
+  "description": "Live video rating system",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+      "axios": "^1.6.0",
+      "express": "^4.18.2",
+      "mysql2": "^3.9.0",
+      "socket.io": "^4.7.2",
+      "socket.io-client": "^4.7.2"
+    }
+}

@@ -1,0 +1,52 @@
+body {
+    font-family: Arial, sans-serif;
+    background: #111;
+    color: white;
+    text-align: center;
+    margin: 0;
+}
+
+.video-wrapper {
+    position: relative;
+    display: inline-block;
+    width: 80%;
+}
+
+video {
+    width: 100%;
+    display: block;
+}
+
+.reaction-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    overflow: hidden;
+    z-index: 10; /* 🔥 ensures it's above video */
+}
+
+.floating-emoji {
+    position: absolute;
+    bottom: 0;
+    font-size: 42px;
+    animation: floatUp 3s ease-out forwards;
+}
+
+@keyframes floatUp {
+    0% {
+        transform: translateY(0);
+        opacity: 1;
+    }
+    100% {
+        transform: translateY(-400px);
+        opacity: 0;
+    }
+}
+
+.current-playing {
+    font-weight: bold;
+    color: #4CAF50;
+}
