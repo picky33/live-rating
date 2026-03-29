@@ -6,6 +6,7 @@ const mysql = require('mysql2');
 const axios = require('axios');
 const ioClient = require('socket.io-client');
 const crypto = require('crypto');
+const https = require('https');
 
 const app = express();
 const server = http.createServer(app);
@@ -433,7 +434,36 @@ if (USE_REMOTE_MASTER) {
 /* =========================
    START
 ========================= */
+/* =========================
+   PUBLIC IP LOGGER (AWS)
+========================= */
 
+function logPublicURL() {
+
+    if (!USE_REMOTE_MASTER) return; // only show in AWS mode
+
+    https.get('https://api.ipify.org', (res) => {
+
+        let data = '';
+
+        res.on('data', chunk => data += chunk);
+
+        res.on('end', () => {
+
+            const ip = data.trim();
+
+            console.log("\n==============================");
+            console.log(`🌐 Public Vote URL: http://${ip}:3000/vote.html`);
+            console.log("==============================\n");
+
+        });
+
+    }).on('error', (err) => {
+        console.log("⚠️ Could not fetch public IP:", err.message);
+    });
+}
 server.listen(3000, '0.0.0.0', () => {
     console.log("Server running on port 3000");
+
+    logPublicURL(); // 🔥 ADD THIS
 });
