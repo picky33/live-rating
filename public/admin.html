@@ -66,6 +66,12 @@ th { background:#1a1a1a; }
     margin:10px;
     font-size:18px;
 }
+
+/* Dashboard */
+.dashboard {
+    margin-top:10px;
+    font-size:18px;
+}
 </style>
 </head>
 <body>
@@ -77,6 +83,14 @@ th { background:#1a1a1a; }
 AWS Connection: <span id="awsLed">🔴</span>
 </div>
 
+<!-- DASHBOARD -->
+<div class="dashboard">
+👥 Connected Users: <span id="userCount">0</span>
+</div>
+
+<hr>
+
+<!-- VIDEO CONTROLS -->
 <div>
 <button onclick="previousVideo()">⏮ Previous</button>
 <button onclick="nextVideo()">⏭ Next</button>
@@ -85,12 +99,31 @@ AWS Connection: <span id="awsLed">🔴</span>
 <div style="margin-top:10px;">
 <label>
 <input type="checkbox" id="shuffleToggle" checked onchange="toggleShuffle(this)">
-Shuffle Playback (Default ON)
+Shuffle Playback
 </label>
 </div>
 
 <hr>
 
+<!-- SETTINGS -->
+<h2>Settings</h2>
+
+<div>
+Reaction Cooldown (seconds):
+<input type="number" id="cooldownInput" value="10" min="0">
+<button onclick="setCooldown()">Apply</button>
+</div>
+
+<br>
+
+<div>
+Single Vote Mode:
+<button onclick="toggleVoteMode()" id="voteToggleBtn">Enabled</button>
+</div>
+
+<hr>
+
+<!-- POLL -->
 <h2>Send Live Question</h2>
 
 <input type="text" id="pollQuestion" placeholder="Enter question" style="width:60%"><br><br>
@@ -110,6 +143,7 @@ Results Duration:
 
 <hr>
 
+<!-- VIDEO TABLE -->
 <h2>All Videos</h2>
 
 <table>
@@ -129,34 +163,58 @@ const socket = io();
 let currentIndex = 0;
 
 /* =========================
-   AWS LED STATUS
+   AWS STATUS
 ========================= */
 
 socket.on('aws_status', (online)=>{
     document.getElementById('awsLed').innerText = online ? "🟢" : "🔴";
 });
 
-/* Hide if not AWS mode */
-fetch('/api/current')
-.then(res=>res.json())
-.then(()=>{
-    // If local mode, hide LED
-    if (location.hostname === "localhost" || location.hostname.startsWith("192.")) {
-        document.getElementById('awsStatus').style.display = "none";
-    }
-});
-
-/* =========================
-   HELPERS
-========================= */
-
-function cleanTitle(title){
-    title = title.replace(/\.[^/.]+$/,"");
-    return title.length > 40 ? title.substring(0,40)+"..." : title;
+/* Hide AWS indicator locally */
+if (location.hostname === "localhost" || location.hostname.startsWith("192.")) {
+    document.getElementById('awsStatus').style.display = "none";
 }
 
 /* =========================
-   CONTROLS
+   USER COUNT
+========================= */
+
+socket.on('user_count',(count)=>{
+    document.getElementById('userCount').innerText = count;
+});
+
+/* =========================
+   SETTINGS
+========================= */
+
+function setCooldown(){
+    const val = document.getElementById('cooldownInput').value;
+
+    socket.emit('admin_control',{
+        action:"set_reaction_cooldown",
+        value: val
+    });
+}
+
+function toggleVoteMode(){
+    const btn = document.getElementById('voteToggleBtn');
+    const enabled = btn.innerText !== "Enabled";
+
+    socket.emit('admin_control',{
+        action:"toggle_single_vote",
+        enabled
+    });
+}
+
+socket.on('settings_update',(settings)=>{
+    document.getElementById('cooldownInput').value = settings.reactionCooldown;
+
+    const btn = document.getElementById('voteToggleBtn');
+    btn.innerText = settings.singleVoteMode ? "Enabled" : "Disabled";
+});
+
+/* =========================
+   VIDEO CONTROLS
 ========================= */
 
 function nextVideo(){
@@ -198,6 +256,11 @@ function sendPoll(){
 /* =========================
    VIDEO TABLE
 ========================= */
+
+function cleanTitle(title){
+    title = title.replace(/\.[^/.]+$/,"");
+    return title.length > 40 ? title.substring(0,40)+"..." : title;
+}
 
 async function loadVideoTable(){
 

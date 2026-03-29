@@ -5,6 +5,7 @@ const fs = require('fs');
 const mysql = require('mysql2');
 const axios = require('axios');
 const ioClient = require('socket.io-client');
+const crypto = require('crypto');
 
 const app = express();
 const server = http.createServer(app);
@@ -19,10 +20,45 @@ app.use('/videos', express.static('videos'));
 ========================= */
 
 const USE_REMOTE_MASTER = process.env.USE_REMOTE_MASTER === "true";
-const MASTER_URL = process.env.MASTER_URL || "http://localhost:3000";
+const MASTER_URL = process.env.MASTER_URL || "";
 
 /* =========================
-   MYSQL
+   USER TRACKING (COOKIE)
+========================= */
+
+function getUserId(req, res) {
+    let userId = req.headers.cookie?.match(/uid=([^;]+)/)?.[1];
+
+    if (!userId) {
+        userId = crypto.randomUUID();
+        res.setHeader('Set-Cookie', `uid=${userId}; Path=/; Max-Age=31536000`);
+    }
+
+    return userId;
+}
+
+/* =========================
+   SETTINGS
+========================= */
+
+let reactionCooldown = 10;
+let singleVoteMode = true;
+
+/* =========================
+   TRACKING
+========================= */
+
+const reactionTimestamps = {};
+const userVotes = {};
+
+/* =========================
+   USER COUNT
+========================= */
+
+let connectedUsers = 0;
+
+/* =========================
+   DATABASE
 ========================= */
 
 const db = mysql.createPool({
@@ -32,58 +68,15 @@ const db = mysql.createPool({
     database: 'live_rating'
 });
 
-/* =========================
-   DB INIT
-========================= */
-
-function initDatabase() {
-    db.query(`
-        CREATE TABLE IF NOT EXISTS votes (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            video_id INT NOT NULL,
-            rating INT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    `);
-}
-
-initDatabase();
+db.query(`
+CREATE TABLE IF NOT EXISTS votes (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    video_id INT,
+    rating INT
+)`);
 
 /* =========================
-   OFFLINE QUEUE (AWS)
-========================= */
-
-let offlineQueue = [];
-let masterOnline = true;
-
-async function sendToMaster(endpoint, data) {
-    try {
-        await axios.post(`${MASTER_URL}${endpoint}`, data);
-        masterOnline = true;
-        return true;
-    } catch {
-        masterOnline = false;
-        return false;
-    }
-}
-
-async function flushQueue() {
-    if (!USE_REMOTE_MASTER || offlineQueue.length === 0) return;
-
-    const remaining = [];
-
-    for (const item of offlineQueue) {
-        const success = await sendToMaster(item.endpoint, item.data);
-        if (!success) remaining.push(item);
-    }
-
-    offlineQueue = remaining;
-}
-
-setInterval(flushQueue, 5000);
-
-/* =========================
-   VIDEO SYSTEM
+   VIDEO SYSTEM (FIXED)
 ========================= */
 
 let playlist = [];
@@ -150,10 +143,9 @@ loadPlaylist();
 
 function updateStats(index) {
     db.query(
-        'SELECT AVG(rating) as avg, COUNT(*) as count FROM votes WHERE video_id = ?',
+        'SELECT AVG(rating) as avg, COUNT(*) as count FROM votes WHERE video_id=?',
         [index],
         (err, results) => {
-
             if (err) return;
 
             const avg = Number(results[0].avg) || 0;
@@ -171,7 +163,7 @@ function updateStats(index) {
 }
 
 /* =========================
-   POLL SYSTEM (FIXED)
+   POLL SYSTEM
 ========================= */
 
 let activePoll = null;
@@ -210,36 +202,87 @@ function startPoll(data) {
 }
 
 /* =========================
+   AWS RELAY (QUEUE)
+========================= */
+
+let offlineQueue = [];
+let masterOnline = true;
+
+async function sendToMaster(endpoint, data) {
+    try {
+        await axios.post(`${MASTER_URL}${endpoint}`, data);
+        masterOnline = true;
+        return true;
+    } catch {
+        masterOnline = false;
+        return false;
+    }
+}
+
+setInterval(async () => {
+    if (!USE_REMOTE_MASTER) return;
+
+    const remaining = [];
+
+    for (const item of offlineQueue) {
+        const ok = await sendToMaster(item.endpoint, item.data);
+        if (!ok) remaining.push(item);
+    }
+
+    offlineQueue = remaining;
+}, 5000);
+
+/* =========================
    API
 ========================= */
 
 function handleProxy(endpoint, req, res, localHandler) {
+    if (!USE_REMOTE_MASTER) return localHandler();
 
-    if (!USE_REMOTE_MASTER) {
-        return localHandler();
-    }
-
-    sendToMaster(endpoint, req.body).then(success => {
-        if (!success) {
-            offlineQueue.push({ endpoint, data: req.body });
-        }
-    });
+    sendToMaster(endpoint, req.body)
+        .catch(() => offlineQueue.push({ endpoint, data: req.body }));
 
     res.sendStatus(200);
 }
 
 /* VOTE */
 app.post('/api/vote', (req, res) => {
+
+    const userId = getUserId(req, res);
+
     handleProxy('/api/vote', req, res, () => {
 
         const { rating } = req.body;
         const index = getCurrentVideoIndex();
 
+        if (singleVoteMode) {
+            if (!userVotes[userId]) userVotes[userId] = {};
+
+            const existing = userVotes[userId][index];
+
+            if (existing) {
+                db.query(
+                    'UPDATE votes SET rating=? WHERE id=?',
+                    [rating, existing],
+                    () => {
+                        updateStats(index);
+                        res.sendStatus(200);
+                    }
+                );
+                return;
+            }
+        }
+
         db.query(
             'INSERT INTO votes (video_id, rating) VALUES (?,?)',
             [index, rating],
-            (err) => {
-                if (err) return res.sendStatus(500);
+            (err, result) => {
+
+                if (singleVoteMode) {
+                    userVotes[userId] = userVotes[userId] || {};
+                    userVotes[userId][index] = result.insertId;
+                }
+
                 updateStats(index);
                 res.sendStatus(200);
             }
@@ -247,133 +290,74 @@ app.post('/api/vote', (req, res) => {
     });
 });
 
-/* REACTIONS */
+/* REACTION */
 let totalReactions = 0;
 
 app.post('/api/reaction', (req, res) => {
 
-    if (USE_REMOTE_MASTER) {
-        sendToMaster('/api/reaction', req.body)
-            .catch(() => offlineQueue.push({ endpoint:'/api/reaction', data:req.body }));
-        return res.sendStatus(200);
+    const userId = getUserId(req, res);
+    const now = Date.now();
+
+    if (reactionCooldown > 0) {
+        const last = reactionTimestamps[userId] || 0;
+        if (now - last < reactionCooldown * 1000) {
+            return res.status(429).send("Cooldown");
+        }
+        reactionTimestamps[userId] = now;
     }
 
-    totalReactions++;
     io.emit('new_reaction', req.body.emoji);
+    totalReactions++;
     io.emit('reaction_update', totalReactions);
 
     res.sendStatus(200);
 });
 
-/* POLL VOTE */
-app.post('/api/poll_vote', (req, res) => {
-
-    handleProxy('/api/poll_vote', req, res, () => {
-
-        if (!activePoll || !activePoll.votingOpen) {
-            return res.status(403).send("Closed");
-        }
-
-        const { optionIndex } = req.body;
-
-        if (activePoll.counts[optionIndex] !== undefined) {
-            activePoll.counts[optionIndex]++;
-        }
-
-        io.emit('poll_update', activePoll);
-        res.sendStatus(200);
-    });
-});
-
-/* =========================
-   READ ROUTES
-========================= */
-
-app.get('/api/videos', (req,res)=> res.json(playlist));
-
-app.get('/api/current', (req,res)=>{
-    res.json({
-        currentIndex:getCurrentVideoIndex(),
-        currentVideo:playlist[getCurrentVideoIndex()]
-    });
-});
-
-/* =========================
-   LEADERBOARD (FIXED)
-========================= */
-
-app.get('/api/leaderboard', async (req, res) => {
-
-    if (USE_REMOTE_MASTER) {
-        try {
-            const r = await axios.get(`${MASTER_URL}/api/leaderboard`);
-            return res.json(r.data);
-        } catch {
-            return res.json([]);
-        }
-    }
-
-    try {
-        const data = [];
-
-        for (let i = 0; i < playlist.length; i++) {
-
-            const [rows] = await db.promise().query(
-                'SELECT AVG(rating) as avg, COUNT(*) as count FROM votes WHERE video_id = ?',
-                [i]
-            );
-
-            data.push({
-                id: i,
-                title: playlist[i]?.title || "Unknown",
-                avg: Number(rows[0].avg) || 0,
-                count: rows[0].count || 0
-            });
-        }
-
-        res.json(data);
-
-    } catch (err) {
-        console.error("Leaderboard error:", err);
-        res.json([]);
-    }
-});
-
-/* =========================
-   DISTRIBUTION (FIXED)
-========================= */
-
+/* DISTRIBUTION */
 app.get('/api/distribution/:id', async (req, res) => {
 
-    const videoId = parseInt(req.params.id);
+    const [rows] = await db.promise().query(
+        'SELECT rating, COUNT(*) as count FROM votes WHERE video_id=? GROUP BY rating',
+        [req.params.id]
+    );
 
-    if (USE_REMOTE_MASTER) {
-        try {
-            const r = await axios.get(`${MASTER_URL}/api/distribution/${videoId}`);
-            return res.json(r.data);
-        } catch {
-            return res.json({});
-        }
-    }
+    const result = {};
+    rows.forEach(r => result[r.rating] = r.count);
 
-    try {
+    res.json(result);
+});
+
+/* LEADERBOARD */
+app.get('/api/leaderboard', async (req, res) => {
+
+    const data = [];
+
+    for (let i = 0; i < playlist.length; i++) {
         const [rows] = await db.promise().query(
-            'SELECT rating, COUNT(*) as count FROM votes WHERE video_id = ? GROUP BY rating',
-            [videoId]
+            'SELECT AVG(rating) as avg, COUNT(*) as count FROM votes WHERE video_id=?',
+            [i]
         );
 
-        const result = {};
-
-        rows.forEach(r => {
-            result[r.rating] = r.count;
+        data.push({
+            id: i,
+            title: playlist[i].title,
+            avg: Number(rows[0].avg) || 0,
+            count: rows[0].count || 0
         });
-
-        res.json(result);
-
-    } catch (err) {
-        console.error("Distribution error:", err);
-        res.json({});
     }
+
+    res.json(data);
+});
+
+/* VIDEOS */
+app.get('/api/videos', (req, res) => res.json(playlist));
+
+/* CURRENT */
+app.get('/api/current', (req, res) => {
+    res.json({
+        currentIndex: getCurrentVideoIndex(),
+        currentVideo: playlist[getCurrentVideoIndex()]
+    });
 });
 
 /* =========================
@@ -382,31 +366,36 @@ app.get('/api/distribution/:id', async (req, res) => {
 
 if (USE_REMOTE_MASTER) {
 
-    const remoteSocket = ioClient(MASTER_URL);
+    const remote = ioClient(MASTER_URL);
 
     io.on('connection', (socket) => {
 
         socket.emit('aws_status', masterOnline);
 
-        remoteSocket.onAny((event, ...args) => {
-            socket.emit(event, ...args);
-        });
-
-        socket.onAny((event, ...args) => {
-            remoteSocket.emit(event, ...args);
-        });
+        remote.onAny((e,...a)=>socket.emit(e,...a));
+        socket.onAny((e,...a)=>remote.emit(e,...a));
     });
 
 } else {
 
     io.on('connection', (socket) => {
 
+        connectedUsers++;
+        io.emit('user_count', connectedUsers);
+
         socket.emit('video_changed', getCurrentVideoIndex());
 
-        /* 🔥 IMPORTANT FIX */
-        if (activePoll) {
-            socket.emit('poll_started', activePoll);
-        }
+        socket.emit('settings_update', {
+            reactionCooldown,
+            singleVoteMode
+        });
+
+        if (activePoll) socket.emit('poll_started', activePoll);
+
+        socket.on('disconnect', () => {
+            connectedUsers--;
+            io.emit('user_count', connectedUsers);
+        });
 
         socket.on('video_ended', nextVideo);
 
@@ -415,50 +404,28 @@ if (USE_REMOTE_MASTER) {
             if (data.action === "next") nextVideo();
             if (data.action === "previous") previousVideo();
             if (data.action === "shuffle") toggleShuffle(data.enabled);
+            if (data.action === "start_poll") startPoll(data);
 
-            /* 🔥 POLL FIX */
-            if (data.action === "start_poll") {
-                startPoll(data);
+            if (data.action === "set_reaction_cooldown") {
+                reactionCooldown = parseInt(data.value) || 0;
             }
+
+            if (data.action === "toggle_single_vote") {
+                singleVoteMode = data.enabled;
+            }
+
+            io.emit('settings_update', {
+                reactionCooldown,
+                singleVoteMode
+            });
         });
     });
 }
-
-/* =========================
-   AWS STATUS
-========================= */
-
-setInterval(() => {
-    io.emit('aws_status', masterOnline);
-}, 3000);
 
 /* =========================
    START
 ========================= */
-const https = require('https');
 
-function logPublicIP() {
-
-    if (!USE_REMOTE_MASTER) return; // only for AWS mode
-
-    https.get('https://api.ipify.org', (res) => {
-
-        let data = '';
-
-        res.on('data', chunk => data += chunk);
-
-        res.on('end', () => {
-            console.log("\n==============================");
-            console.log(`🌐 Public URL: http://${data}:3000/vote.html`);
-            console.log("==============================\n");
-        });
-
-    }).on('error', () => {
-        console.log("Could not fetch public IP");
-    });
-}
 server.listen(3000, '0.0.0.0', () => {
     console.log("Server running on port 3000");
-
-    logPublicIP(); // 🔥 ADD THIS
 });
