@@ -46,6 +46,7 @@ function getUserId(req, res) {
 let reactionCooldown = 10;
 let singleVoteMode = true;
 let qrOverrideURL = "";
+let qrSecondaryURL = "";
 let publicIP = null;
 
 /* =========================
@@ -271,6 +272,20 @@ app.get('/api/qr-url', (req,res)=>{
 app.post('/api/qr-url', (req,res)=>{
     qrOverrideURL = req.body.url || "";
     io.emit('qr_updated', qrOverrideURL); // 🔥 live update
+    res.sendStatus(200);
+});
+
+/* =========================
+   SECOND QR CODE (WIFI / CUSTOM)
+========================= */
+
+app.get('/api/qr-secondary', (req,res)=>{
+    res.json({ url: qrSecondaryURL });
+});
+
+app.post('/api/qr-secondary', (req,res)=>{
+    qrSecondaryURL = req.body.url || "";
+    io.emit('qr_secondary_updated', qrSecondaryURL);
     res.sendStatus(200);
 });
 

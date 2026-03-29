@@ -108,6 +108,11 @@ Shuffle Playback
     <input id="qrInput" type="text" placeholder="https://your-aws-url/vote.html" style="width:300px;">
     <button onclick="saveQR()">Save</button>
 </div>
+<div style="margin-top:20px;">
+    <h3>Secondary QR Code (WiFi / Custom)</h3>
+    <input id="qr2Input" type="text" placeholder="Optional QR content">
+    <button onclick="saveQR2()">Save</button>
+</div>
 
 <hr>
 
@@ -323,6 +328,24 @@ async function saveQR(){
 }
 
 loadQR();
+
+async function loadQR2(){
+    const res = await fetch('/api/qr-secondary');
+    const data = await res.json();
+    document.getElementById('qr2Input').value = data.url || "";
+}
+
+async function saveQR2(){
+    const url = document.getElementById('qr2Input').value;
+
+    await fetch('/api/qr-secondary', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ url })
+    });
+}
+
+loadQR2();
 </script>
 
 </body>

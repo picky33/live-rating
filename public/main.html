@@ -19,13 +19,35 @@ body { background:var(--bg); color:var(--text); font-family:sans-serif; text-ali
 
 .video-row {
     display:grid;
-    grid-template-columns: 1fr auto auto 1fr;
+    grid-template-columns: 1fr 240px 1fr 60vw 1fr 240px 1fr;
     align-items:flex-start;
+    justify-content:center;
+    gap:20px;
     margin-top:20px;
 }
 
-.qr-panel { grid-column:2; margin-right:30px; }
-.video-wrapper { grid-column:3; width:50vw; max-width:50vw; position:relative; }
+.qr-panel {
+    grid-column:2;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    text-align:center;
+}
+
+.qr-panel-secondary {
+    grid-column:6;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    text-align:center;
+}
+
+.video-wrapper {
+    grid-column:4;
+    width:50vw;
+    justify-self:center;
+    position:relative;
+}
 
 video { width:100%; height:500px; object-fit:contain; background:black; }
 
@@ -78,6 +100,13 @@ video { width:100%; height:500px; object-fit:contain; background:black; }
 .leader-1 { color:gold; }
 .leader-2 { color:silver; }
 .leader-3 { color:#cd7f32; }
+
+#qrText,
+#qrText2 {
+    margin-top:10px;   /* 🔥 space between QR and text */
+    /*font-size:11px;
+    word-break:break-all;*/
+}
 </style>
 </head>
 
@@ -86,18 +115,24 @@ video { width:100%; height:500px; object-fit:contain; background:black; }
 <h1 id="videoTitle">Loading...</h1>
 
 <div class="video-row">
-<div class="qr-panel">
-<h3>Vote Here</h3>
-<div id="qrcode"></div>
-<div id="qrText"></div>
+    <div class="qr-panel">
+        <h3>Vote Here</h3>
+        <div id="qrcode"></div>
+        <div id="qrText"> </div>
+    </div>
+    
+    <div class="video-wrapper">
+        <video id="videoPlayer" autoplay controls playsinline></video>
+        <div id="reactionContainer" class="reaction-layer"></div>
+    </div>
+    
+    
+    <div class="qr-panel-secondary" id="qr2Panel" style="display:none;">
+        <h3>WiFi</h3>
+        <div id="qrcode2"></div>
+        <div id="qrText2"></div>
+    </div>
 </div>
-
-<div class="video-wrapper">
-<video id="videoPlayer" autoplay controls playsinline></video>
-<div id="reactionContainer" class="reaction-layer"></div>
-</div>
-</div>
-
 <div class="rating-row">
     <div>
         <h2>Average Rating: <span id="avgRating">0.00</span></h2>
@@ -317,6 +352,8 @@ socket.on('qr_updated', (url)=>{
     generateQRCode();
 });
 
+socket.on('qr_secondary_updated', generateSecondaryQR);
+
 /* ---------- QR ---------- */
 async function generateQRCode(){
 
@@ -336,14 +373,43 @@ async function generateQRCode(){
 
     new QRCode(document.getElementById("qrcode"), {
         text: voteURL,
-        width: 140,
-        height: 140
+        width: 240,
+        height: 240
     });
 
     document.getElementById("qrText").innerText = voteURL;
 }
 
 generateQRCode();
+
+async function generateSecondaryQR(){
+
+    try {
+        const res = await fetch('/api/qr-secondary');
+        const data = await res.json();
+
+        const panel = document.getElementById("qr2Panel");
+
+        if (!data.url || data.url.trim() === "") {
+            panel.style.display = "none";
+            return;
+        }
+
+        panel.style.display = "flex";
+
+        document.getElementById("qrcode2").innerHTML = "";
+
+        new QRCode(document.getElementById("qrcode2"), {
+            text: data.url,
+            width: 240,
+            height: 240
+        });
+
+        document.getElementById("qrText2").innerText = data.url;
+
+    } catch {}
+}
+generateSecondaryQR();
 
 init();
 </script>
