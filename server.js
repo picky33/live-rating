@@ -435,7 +435,30 @@ setInterval(() => {
 /* =========================
    START
 ========================= */
+const https = require('https');
 
+function logPublicIP() {
+
+    if (!USE_REMOTE_MASTER) return; // only for AWS mode
+
+    https.get('https://api.ipify.org', (res) => {
+
+        let data = '';
+
+        res.on('data', chunk => data += chunk);
+
+        res.on('end', () => {
+            console.log("\n==============================");
+            console.log(`🌐 Public URL: http://${data}:3000/vote.html`);
+            console.log("==============================\n");
+        });
+
+    }).on('error', () => {
+        console.log("Could not fetch public IP");
+    });
+}
 server.listen(3000, '0.0.0.0', () => {
     console.log("Server running on port 3000");
+
+    logPublicIP(); // 🔥 ADD THIS
 });
