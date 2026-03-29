@@ -238,10 +238,22 @@ setInterval(async () => {
 ========================= */
 
 function handleProxy(endpoint, req, res, localHandler) {
-    if (!USE_REMOTE_MASTER) return localHandler();
 
-    sendToMaster(endpoint, req.body)
-        .catch(() => offlineQueue.push({ endpoint, data: req.body }));
+    if (!USE_REMOTE_MASTER) {
+        return localHandler();
+    }
+
+    const userId = getUserId(req, res);
+
+    sendToMaster(endpoint, {
+        ...req.body,
+        userId   // 🔥 forward identity
+    }).catch(() => {
+        offlineQueue.push({
+            endpoint,
+            data: { ...req.body, userId }
+        });
+    });
 
     res.sendStatus(200);
 }
@@ -249,7 +261,7 @@ function handleProxy(endpoint, req, res, localHandler) {
 /* VOTE */
 app.post('/api/vote', (req, res) => {
 
-    const userId = getUserId(req, res);
+    const userId = req.body.userId || getUserId(req, res);
 
     handleProxy('/api/vote', req, res, () => {
 
@@ -296,7 +308,7 @@ let totalReactions = 0;
 
 app.post('/api/reaction', (req, res) => {
 
-    const userId = getUserId(req, res);
+    const userId = req.body.userId || getUserId(req, res);
     const now = Date.now();
 
     if (reactionCooldown > 0) {
@@ -466,4 +478,41 @@ server.listen(3000, '0.0.0.0', () => {
     console.log("Server running on port 3000");
 
     logPublicURL(); // 🔥 ADD THIS
+});
+
+/* =========================
+   PUBLIC URL (FOR QR)
+========================= */
+
+let publicURL = null;
+
+const https = require('https');
+
+function fetchPublicIP() {
+
+    if (!USE_REMOTE_MASTER) return;
+
+    https.get('https://api.ipify.org', (res) => {
+
+        let data = '';
+
+        res.on('data', chunk => data += chunk);
+
+        res.on('end', () => {
+            const ip = data.trim();
+            publicURL = `http://${ip}:3000`;
+            console.log(`🌐 Public Vote URL: ${publicURL}/vote.html`);
+        });
+
+    }).on('error', () => {
+        console.log("Failed to fetch public IP");
+    });
+}
+
+fetchPublicIP();
+
+app.get('/api/public-url', (req,res)=>{
+    res.json({
+        url: publicURL
+    });
 });

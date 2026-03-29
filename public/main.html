@@ -206,39 +206,25 @@ const socket = io();
 
 async function generateQRCode(){
 
-    let voteURL;
+    let voteURL = `${window.location.origin}/vote.html`;
 
     try {
-        const res = await fetch('/api/current');
-        await res.json();
+        const res = await fetch('/api/public-url');
+        const data = await res.json();
 
-        // If we are on AWS (public IP), use this host
-        const host = window.location.hostname;
-
-        // Detect local vs AWS
-        if (
-            host === "localhost" ||
-            host.startsWith("192.") ||
-            host.startsWith("10.") ||
-            host.startsWith("172.")
-        ) {
-            // LOCAL → fallback
-            voteURL = `${window.location.origin}/vote.html`;
-        } else {
-            // AWS → use public host
-            voteURL = `${window.location.origin}/vote.html`;
+        if (data.url) {
+            voteURL = `${data.url}/vote.html`;
         }
 
-    } catch {
-        voteURL = `${window.location.origin}/vote.html`;
-    }
+    } catch {}
+
+    document.getElementById("qrcode").innerHTML = "";
 
     new QRCode(document.getElementById("qrcode"), {
         text: voteURL,
         width: 140,
         height: 140
     });
-
 }
 
 generateQRCode();
