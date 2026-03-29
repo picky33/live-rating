@@ -6,7 +6,6 @@ const mysql = require('mysql2');
 const axios = require('axios');
 const ioClient = require('socket.io-client');
 const crypto = require('crypto');
-const https = require('https');
 
 const app = express();
 const server = http.createServer(app);
@@ -24,7 +23,72 @@ const USE_REMOTE_MASTER = process.env.USE_REMOTE_MASTER === "true";
 const MASTER_URL = process.env.MASTER_URL || "";
 
 /* =========================
-   USER TRACKING (COOKIE)
+   AWS HANDSHAKE
+========================= */
+
+let awsConnected = false;
+
+async function checkAWSConnection() {
+    if (USE_REMOTE_MASTER) return;
+
+    if (!MASTER_URL) {
+        awsConnected = false;
+        return;
+    }
+
+    try {
+        await axios.get(`${MASTER_URL}/api/health`);
+        awsConnected = true;
+    } catch {
+        awsConnected = false;
+    }
+}
+
+setInterval(checkAWSConnection, 3000);
+
+/* =========================
+   PUBLIC URL (SMART QR)
+========================= */
+
+let publicURL = null;
+
+async function initPublicURL() {
+
+    if (USE_REMOTE_MASTER) {
+        try {
+            const res = await axios.get('https://api.ipify.org');
+            publicURL = `http://${res.data}:3000`;
+            console.log(`🌐 Public Vote URL: ${publicURL}/vote.html`);
+        } catch {}
+    }
+}
+
+initPublicURL();
+
+app.get('/api/public-url', (req,res)=>{
+
+    // LOCAL → only show AWS URL if connected
+    if (!USE_REMOTE_MASTER) {
+        if (awsConnected && MASTER_URL) {
+            return res.json({ url: MASTER_URL });
+        }
+        return res.json({ url: null });
+    }
+
+    // AWS → always return its own public URL
+    res.json({ url: publicURL });
+});
+
+/* =========================
+   HEALTH CHECK
+========================= */
+
+app.get('/api/health', (req,res)=>{
+    res.send("OK");
+});
+
+/* =========================
+   USER TRACKING
 ========================= */
 
 function getUserId(req, res) {
@@ -51,15 +115,10 @@ let singleVoteMode = true;
 
 const reactionTimestamps = {};
 const userVotes = {};
-
-/* =========================
-   USER COUNT
-========================= */
-
 let connectedUsers = 0;
 
 /* =========================
-   DATABASE
+   DB
 ========================= */
 
 const db = mysql.createPool({
@@ -77,7 +136,7 @@ CREATE TABLE IF NOT EXISTS votes (
 )`);
 
 /* =========================
-   VIDEO SYSTEM (FIXED)
+   VIDEO SYSTEM
 ========================= */
 
 let playlist = [];
@@ -164,46 +223,7 @@ function updateStats(index) {
 }
 
 /* =========================
-   POLL SYSTEM
-========================= */
-
-let activePoll = null;
-let pollTimer = null;
-let resultsTimer = null;
-
-function startPoll(data) {
-
-    if (pollTimer) clearTimeout(pollTimer);
-    if (resultsTimer) clearTimeout(resultsTimer);
-
-    activePoll = {
-        question: data.question,
-        options: data.options,
-        counts: {},
-        votingOpen: true
-    };
-
-    data.options.forEach((_, i) => {
-        activePoll.counts[i] = 0;
-    });
-
-    io.emit('poll_started', activePoll);
-
-    pollTimer = setTimeout(() => {
-
-        activePoll.votingOpen = false;
-        io.emit('poll_closed', activePoll);
-
-        resultsTimer = setTimeout(() => {
-            activePoll = null;
-            io.emit('poll_cleared');
-        }, (data.resultsDuration || 30) * 1000);
-
-    }, (data.duration || 60) * 1000);
-}
-
-/* =========================
-   AWS RELAY (QUEUE)
+   PROXY
 ========================= */
 
 let offlineQueue = [];
@@ -220,45 +240,22 @@ async function sendToMaster(endpoint, data) {
     }
 }
 
-setInterval(async () => {
-    if (!USE_REMOTE_MASTER) return;
-
-    const remaining = [];
-
-    for (const item of offlineQueue) {
-        const ok = await sendToMaster(item.endpoint, item.data);
-        if (!ok) remaining.push(item);
-    }
-
-    offlineQueue = remaining;
-}, 5000);
-
-/* =========================
-   API
-========================= */
-
 function handleProxy(endpoint, req, res, localHandler) {
 
-    if (!USE_REMOTE_MASTER) {
-        return localHandler();
-    }
+    if (!USE_REMOTE_MASTER) return localHandler();
 
-    const userId = getUserId(req, res);
+    const userId = req.body.userId || getUserId(req, res);
 
-    sendToMaster(endpoint, {
-        ...req.body,
-        userId   // 🔥 forward identity
-    }).catch(() => {
-        offlineQueue.push({
-            endpoint,
-            data: { ...req.body, userId }
-        });
-    });
+    sendToMaster(endpoint, { ...req.body, userId })
+        .catch(() => offlineQueue.push({ endpoint, data:{...req.body,userId} }));
 
     res.sendStatus(200);
 }
 
-/* VOTE */
+/* =========================
+   VOTE
+========================= */
+
 app.post('/api/vote', (req, res) => {
 
     const userId = req.body.userId || getUserId(req, res);
@@ -269,7 +266,7 @@ app.post('/api/vote', (req, res) => {
         const index = getCurrentVideoIndex();
 
         if (singleVoteMode) {
-            if (!userVotes[userId]) userVotes[userId] = {};
+            userVotes[userId] = userVotes[userId] || {};
 
             const existing = userVotes[userId][index];
 
@@ -303,7 +300,10 @@ app.post('/api/vote', (req, res) => {
     });
 });
 
-/* REACTION */
+/* =========================
+   REACTIONS (FIXED)
+========================= */
+
 let totalReactions = 0;
 
 app.post('/api/reaction', (req, res) => {
@@ -331,192 +331,62 @@ app.post('/api/reaction', (req, res) => {
     });
 });
 
-/* DISTRIBUTION */
-app.get('/api/distribution/:id', async (req, res) => {
-
-    const [rows] = await db.promise().query(
-        'SELECT rating, COUNT(*) as count FROM votes WHERE video_id=? GROUP BY rating',
-        [req.params.id]
-    );
-
-    const result = {};
-    rows.forEach(r => result[r.rating] = r.count);
-
-    res.json(result);
-});
-
-/* LEADERBOARD */
-app.get('/api/leaderboard', async (req, res) => {
-
-    const data = [];
-
-    for (let i = 0; i < playlist.length; i++) {
-        const [rows] = await db.promise().query(
-            'SELECT AVG(rating) as avg, COUNT(*) as count FROM votes WHERE video_id=?',
-            [i]
-        );
-
-        data.push({
-            id: i,
-            title: playlist[i].title,
-            avg: Number(rows[0].avg) || 0,
-            count: rows[0].count || 0
-        });
-    }
-
-    res.json(data);
-});
-
-/* Detect AWS*/
-app.get('/api/config', (req, res) => {
-    res.json({
-        useRemote: USE_REMOTE_MASTER,
-        masterUrl: MASTER_URL || null
-    });
-});
-
-/* VIDEOS */
-app.get('/api/videos', (req, res) => res.json(playlist));
-
-/* CURRENT */
-app.get('/api/current', (req, res) => {
-    res.json({
-        currentIndex: getCurrentVideoIndex(),
-        currentVideo: playlist[getCurrentVideoIndex()]
-    });
-});
-
 /* =========================
    SOCKET
 ========================= */
 
-if (USE_REMOTE_MASTER) {
+io.on('connection', (socket) => {
 
-    const remote = ioClient(MASTER_URL);
+    connectedUsers++;
+    io.emit('user_count', connectedUsers);
 
-    io.on('connection', (socket) => {
+    socket.emit('video_changed', getCurrentVideoIndex());
 
-        socket.emit('aws_status', masterOnline);
-
-        remote.onAny((e,...a)=>socket.emit(e,...a));
-        socket.onAny((e,...a)=>remote.emit(e,...a));
+    socket.emit('settings_update', {
+        reactionCooldown,
+        singleVoteMode
     });
 
-} else {
+    socket.on('video_ended', nextVideo);
 
-    io.on('connection', (socket) => {
-
-        connectedUsers++;
+    socket.on('disconnect', () => {
+        connectedUsers--;
         io.emit('user_count', connectedUsers);
+    });
 
-        socket.emit('video_changed', getCurrentVideoIndex());
+    socket.on('admin_control', (data) => {
 
-        socket.emit('settings_update', {
+        if (data.action === "next") nextVideo();
+        if (data.action === "previous") previousVideo();
+        if (data.action === "shuffle") toggleShuffle(data.enabled);
+
+        if (data.action === "set_reaction_cooldown") {
+            reactionCooldown = parseInt(data.value) || 0;
+        }
+
+        if (data.action === "toggle_single_vote") {
+            singleVoteMode = data.enabled;
+        }
+
+        io.emit('settings_update', {
             reactionCooldown,
             singleVoteMode
         });
-
-        if (activePoll) socket.emit('poll_started', activePoll);
-
-        socket.on('disconnect', () => {
-            connectedUsers--;
-            io.emit('user_count', connectedUsers);
-        });
-
-        socket.on('video_ended', nextVideo);
-
-        socket.on('admin_control', (data) => {
-
-            if (data.action === "next") nextVideo();
-            if (data.action === "previous") previousVideo();
-            if (data.action === "shuffle") toggleShuffle(data.enabled);
-            if (data.action === "start_poll") startPoll(data);
-
-            if (data.action === "set_reaction_cooldown") {
-                reactionCooldown = parseInt(data.value) || 0;
-            }
-
-            if (data.action === "toggle_single_vote") {
-                singleVoteMode = data.enabled;
-            }
-
-            io.emit('settings_update', {
-                reactionCooldown,
-                singleVoteMode
-            });
-        });
     });
-}
+});
+
+/* =========================
+   AWS STATUS BROADCAST
+========================= */
+
+setInterval(() => {
+    io.emit('aws_status', awsConnected || masterOnline);
+}, 2000);
 
 /* =========================
    START
 ========================= */
-/* =========================
-   PUBLIC IP LOGGER (AWS)
-========================= */
 
-function logPublicURL() {
-
-    if (!USE_REMOTE_MASTER) return; // only show in AWS mode
-
-    https.get('https://api.ipify.org', (res) => {
-
-        let data = '';
-
-        res.on('data', chunk => data += chunk);
-
-        res.on('end', () => {
-
-            const ip = data.trim();
-
-            console.log("\n==============================");
-            console.log(`🌐 Public Vote URL: http://${ip}:3000/vote.html`);
-            console.log("==============================\n");
-
-        });
-
-    }).on('error', (err) => {
-        console.log("⚠️ Could not fetch public IP:", err.message);
-    });
-}
 server.listen(3000, '0.0.0.0', () => {
     console.log("Server running on port 3000");
-
-    logPublicURL(); // 🔥 ADD THIS
-});
-
-/* =========================
-   PUBLIC URL (FOR QR)
-========================= */
-
-/* =========================
-   PUBLIC URL (QR FIX)
-========================= */
-
-let publicURL = null;
-
-async function initPublicURL() {
-
-    // AWS mode → get own public IP
-    if (USE_REMOTE_MASTER) {
-        try {
-            const res = await axios.get('https://api.ipify.org');
-            publicURL = `http://${res.data}:3000`;
-            console.log(`🌐 Public Vote URL: ${publicURL}/vote.html`);
-        } catch {
-            console.log("Failed to fetch AWS public IP");
-        }
-    }
-
-    // LOCAL mode → use AWS MASTER_URL
-    else if (MASTER_URL) {
-        publicURL = MASTER_URL;
-        console.log(`🌐 Using AWS Relay URL: ${publicURL}/vote.html`);
-    }
-}
-
-initPublicURL();
-
-app.get('/api/public-url', (req,res)=>{
-    res.json({ url: publicURL });
 });
