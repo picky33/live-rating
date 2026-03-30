@@ -195,44 +195,59 @@ socket.on('user_count',(count)=>{
 });
 
 /* =========================
-   SETTINGS
+   SETTINGS (FIXED)
 ========================= */
 
+let singleVoteMode = true;
 
-socket.on('admin_control', (data)=>{
+/* Load current settings */
+async function loadSettings(){
+    const res = await fetch('/api/settings');
+    const data = await res.json();
 
-    if (data.type === "update_settings") {
+    document.getElementById('cooldownInput').value = data.reactionCooldown || 0;
 
-        settings = {
-            ...settings,
-            ...data.settings
-        };
+    singleVoteMode = data.singleVoteMode;
 
-        // broadcast locally
-        io.emit('settings_update', settings);
+    document.getElementById('voteToggleBtn').innerText =
+        singleVoteMode ? "Enabled" : "Disabled";
+}
 
-        // 🔥 forward to AWS
-        if (MASTER_URL) {
-            axios.post(`${MASTER_URL}/api/settings`, settings)
-                .catch(()=>{});
-        }
-    }
-
-});
-    
-
-function updateSettings(){
-
-    const newSettings = {
-        reactionCooldown: parseInt(document.getElementById('cooldownInput').value) || 0,
-        singleVoteMode: document.getElementById('singleVoteToggle').checked
-    };
+/* Apply cooldown */
+function setCooldown(){
+    const value = parseInt(document.getElementById('cooldownInput').value) || 0;
 
     socket.emit('admin_control', {
-        type: "update_settings",
-        settings: newSettings
+        action: "set_reaction_cooldown",
+        value
     });
 }
+
+/* Toggle vote mode */
+function toggleVoteMode(){
+
+    singleVoteMode = !singleVoteMode;
+
+    socket.emit('admin_control', {
+        action: "toggle_single_vote",
+        enabled: singleVoteMode
+    });
+
+    document.getElementById('voteToggleBtn').innerText =
+        singleVoteMode ? "Enabled" : "Disabled";
+}
+
+/* Sync updates from server */
+socket.on('settings_update', (s)=>{
+    document.getElementById('cooldownInput').value = s.reactionCooldown;
+    singleVoteMode = s.singleVoteMode;
+
+    document.getElementById('voteToggleBtn').innerText =
+        singleVoteMode ? "Enabled" : "Disabled";
+});
+
+/* Load on start */
+loadSettings();
 
 /* =========================
    VIDEO CONTROLS

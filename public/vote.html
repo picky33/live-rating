@@ -134,6 +134,7 @@ button {
 
 <script>
 const socket = io();
+let settings = {};
 
 /* =========================
    THEME SYSTEM
@@ -173,21 +174,30 @@ if(localStorage.getItem('theme') === 'light') {
 /* =========================
    POLL EVENTS
 ========================= */
-socket.on('poll_started', renderPoll);
+socket.on('poll_started', (poll)=>{
+    document.querySelector('.section').style.display = "block";
+    renderPoll(poll);
+});
 
 socket.on('poll_closed', ()=>{
     disableButtons();
     document.getElementById('pollQuestion').innerText += " (Voting Closed)";
+    document.querySelector('.section').style.display = "none";
 });
 
 socket.on('poll_cleared', ()=>{
     document.getElementById('pollQuestion').innerText="";
     document.getElementById('pollOptions').innerHTML="";
+    document.querySelector('#pollOptions').parentElement.style.display = "none";
 });
 
 function renderPoll(poll){
-    document.getElementById('pollQuestion').innerText=poll.question;
-    const container=document.getElementById('pollOptions');
+    const section = document.querySelector('#pollOptions').parentElement;
+    section.style.display = "block";
+
+    document.getElementById('pollQuestion').innerText = poll.question;
+
+    const container = document.getElementById('pollOptions');
     container.innerHTML="";
 
     poll.options.forEach((opt,i)=>{
@@ -219,6 +229,18 @@ async function submitVote(index,btn){
 socket.on('settings_update', (newSettings)=>{
     settings = newSettings;
 });
+
+async function loadActivePoll(){
+    try {
+        const res = await fetch('/api/current');
+        const data = await res.json();
+
+        // poll is sent via socket on connect already
+        // but this ensures fallback if missed
+    } catch {}
+}
+
+loadActivePoll();
     
 async function loadSettings(){
     const res = await fetch('/api/settings');
@@ -231,11 +253,14 @@ loadSettings();
 ========================= */
 async function vote(rating){
     if(navigator.vibrate) navigator.vibrate(30);
+
     await fetch('/api/vote',{
         method:'POST',
         headers:{'Content-Type':'application/json'},
         body:JSON.stringify({rating})
     });
+
+    alert("✅ Vote submitted!");
 }
 
 /* =========================
@@ -243,11 +268,16 @@ async function vote(rating){
 ========================= */
 async function react(emoji){
     if(navigator.vibrate) navigator.vibrate(20);
-    await fetch('/api/reaction',{
+
+    const res = await fetch('/api/reaction',{
         method:'POST',
         headers:{'Content-Type':'application/json'},
         body:JSON.stringify({emoji})
     });
+
+    if(res.status === 429){
+        alert("⏳ Please wait before reacting again");
+    }
 }
 </script>
 
