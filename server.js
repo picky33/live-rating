@@ -460,8 +460,7 @@ if (USE_REMOTE_MASTER) {
                 settings.reactionCooldown = parseInt(d.value) || 0;
 
                 if (MASTER_URL) {
-                    axios.post(`${MASTER_URL}/api/settings`, settings)
-                        .catch(()=>{});
+                    sendToMaster('/api/settings', settings);
                 }
             }
 
@@ -470,8 +469,7 @@ if (USE_REMOTE_MASTER) {
                 settings.singleVoteMode = d.enabled;
 
                 if (MASTER_URL) {
-                    axios.post(`${MASTER_URL}/api/settings`, settings)
-                        .catch(()=>{});
+                    sendToMaster('/api/settings', settings);
                 }
             }
 

@@ -8,8 +8,8 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - USE_REMOTE_MASTER=${USE_REMOTE_MASTER:-true}
-      - MASTER_URL=${MASTER_URL:-http://100.100.100.100:3000}
+      - USE_REMOTE_MASTER=${USE_REMOTE_MASTER:-false}
+      - MASTER_URL=${MASTER_URL:-http://100.107.127.85:3000}
     volumes:
       - /Users/nicholasharman/Movies/Anime OP_ED_INTRO_and_More:/app/videos
     depends_on:
