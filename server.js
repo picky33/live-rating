@@ -418,14 +418,8 @@ if (USE_REMOTE_MASTER) {
             socket.emit(event, ...args);
         });
 
-        // ❌ REMOVE THIS (causes conflicts)
-        // socket.onAny((event, ...args) => {
-        //     remoteSocket.emit(event, ...args);
-        // });
-
         socket.emit('aws_status', true);
     });
-}
 
 } else {
 
@@ -438,7 +432,6 @@ if (USE_REMOTE_MASTER) {
 
         socket.emit('video_changed', getCurrentVideoIndex());
 
-        // 🔥 CRITICAL: SEND POLL STATE
         if (activePoll) {
             socket.emit('poll_started', activePoll);
         }
@@ -466,8 +459,7 @@ if (USE_REMOTE_MASTER) {
 
                 settings.reactionCooldown = parseInt(d.value) || 0;
 
-                // 🔥 forward to AWS
-                if (USE_REMOTE_MASTER && MASTER_URL) {
+                if (MASTER_URL) {
                     axios.post(`${MASTER_URL}/api/settings`, settings)
                         .catch(()=>{});
                 }
@@ -477,9 +469,9 @@ if (USE_REMOTE_MASTER) {
 
                 settings.singleVoteMode = d.enabled;
 
-                if (USE_REMOTE_MASTER && MASTER_URL) {
-                    axios.post(`${MASTER_URL}/api/settings`, {
-                    }).catch(()=>{});
+                if (MASTER_URL) {
+                    axios.post(`${MASTER_URL}/api/settings`, settings)
+                        .catch(()=>{});
                 }
             }
 
