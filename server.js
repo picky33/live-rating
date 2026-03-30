@@ -44,10 +44,10 @@ function getUserId(req, res) {
 ========================= */
 
 let settings = {
-    reactionCooldown: 10,
+    reactionCooldown: 1,
     singleVoteMode: true,
-    pollDuration: 60,
-    resultsDuration: 30
+    pollDuration: 40,
+    resultsDuration: 20
 };
 let qrOverrideURL = "";
 let qrSecondaryURL = "";
