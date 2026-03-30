@@ -209,9 +209,14 @@ let offlineQueue = [];
 
 async function sendToMaster(endpoint,data){
     try{
+        console.log("➡️ Sending to AWS:", `${MASTER_URL}${endpoint}`, data);
+
         await axios.post(`${MASTER_URL}${endpoint}`,data);
+
+        console.log("✅ Sent to AWS successfully");
         return true;
-    }catch{
+    }catch(err){
+        console.log("❌ FAILED to send to AWS:", err.message);
         return false;
     }
 }
