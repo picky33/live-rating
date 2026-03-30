@@ -468,10 +468,10 @@ if (USE_REMOTE_MASTER) {
                 settings.reactionCooldown = parseInt(d.value) || 0;
 
                 // 🔥 forward to AWS
-                if (MASTER_URL) {
+                if (USE_REMOTE_MASTER && MASTER_URL) {
                     axios.post(`${MASTER_URL}/api/settings`, {
                         reactionCooldown: settings.reactionCooldown
-                    });
+                    }).catch(()=>{});
                 }
             }
 
@@ -479,10 +479,10 @@ if (USE_REMOTE_MASTER) {
 
                 settings.singleVoteMode = d.enabled;
 
-                if (MASTER_URL) {
+                if (USE_REMOTE_MASTER && MASTER_URL) {
                     axios.post(`${MASTER_URL}/api/settings`, {
                         singleVoteMode: settings.singleVoteMode
-                    });
+                    }).catch(()=>{});
                 }
             }
 
