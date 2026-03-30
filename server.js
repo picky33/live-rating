@@ -43,8 +43,12 @@ function getUserId(req, res) {
    SETTINGS
 ========================= */
 
-let reactionCooldown = 10;
-let singleVoteMode = true;
+let settings = {
+    reactionCooldown: 10,
+    singleVoteMode: true,
+    pollDuration: 60,
+    resultsDuration: 30
+};
 let qrOverrideURL = "";
 let qrSecondaryURL = "";
 let publicIP = null;
@@ -236,6 +240,9 @@ app.get('/api/current',(req,res)=>{
         currentVideo:playlist[getCurrentVideoIndex()]
     });
 });
+app.get('/api/settings', (req,res)=>{
+    res.json(settings);
+});
 
 /* =========================
    QR CODE URL (ADMIN CONTROLLED)
@@ -338,7 +345,7 @@ app.post('/api/vote',(req,res)=>{
 
         userVotes[userId]=userVotes[userId]||{};
 
-        if(singleVoteMode && userVotes[userId][index]){
+        if(settings.singleVoteMode && userVotes[userId][index]){
             db.query(
                 'UPDATE votes SET rating=? WHERE id=?',
                 [rating,userVotes[userId][index]],
@@ -365,9 +372,9 @@ app.post('/api/reaction',(req,res)=>{
     const userId=req.body.userId||getUserId(req,res);
 
     const now=Date.now();
-    if(reactionCooldown>0){
+    if(settings.reactionCooldown>0){
         const last=reactionTimestamps[userId]||0;
-        if(now-last<reactionCooldown*1000)
+        if(now-last<settings.reactionCooldown*1000)
             return res.status(429).send("Cooldown");
         reactionTimestamps[userId]=now;
     }
@@ -437,10 +444,7 @@ if (USE_REMOTE_MASTER) {
             socket.emit('poll_started', activePoll);
         }
 
-        socket.emit('settings_update', {
-            reactionCooldown,
-            singleVoteMode
-        });
+        socket.emit('settings_update', settings);
 
         socket.on('disconnect', () => {
             connectedUsers--;
@@ -460,17 +464,29 @@ if (USE_REMOTE_MASTER) {
             }
 
             if (d.action === "set_reaction_cooldown") {
-                reactionCooldown = parseInt(d.value) || 0;
+
+                settings.reactionCooldown = parseInt(d.value) || 0;
+
+                // 🔥 forward to AWS
+                if (MASTER_URL) {
+                    axios.post(`${MASTER_URL}/api/settings`, {
+                        reactionCooldown: settings.reactionCooldown
+                    });
+                }
             }
 
             if (d.action === "toggle_single_vote") {
-                singleVoteMode = d.enabled;
+
+                settings.singleVoteMode = d.enabled;
+
+                if (MASTER_URL) {
+                    axios.post(`${MASTER_URL}/api/settings`, {
+                        singleVoteMode: settings.singleVoteMode
+                    });
+                }
             }
 
-            io.emit('settings_update', {
-                reactionCooldown,
-                singleVoteMode
-            });
+            io.emit('settings_update', settings);
         });
     });
 }
@@ -495,6 +511,24 @@ if (!USE_REMOTE_MASTER && MASTER_URL) {
         io.emit('aws_status', awsOnline);
     }, 3000);
 }
+
+/* =========================
+   SETTINGS SYNC (MASTER + AWS)
+========================= */
+
+app.post('/api/settings', (req,res)=>{
+
+    // merge new values
+    settings = {
+        ...settings,
+        ...req.body
+    };
+
+    // broadcast to all clients
+    io.emit('settings_update', settings);
+
+    res.sendStatus(200);
+});
 
 /* =========================
    START

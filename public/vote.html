@@ -216,6 +216,16 @@ async function submitVote(index,btn){
     });
 }
 
+socket.on('settings_update', (newSettings)=>{
+    settings = newSettings;
+});
+    
+async function loadSettings(){
+    const res = await fetch('/api/settings');
+    settings = await res.json();
+}
+loadSettings();
+
 /* =========================
    VIDEO RATING
 ========================= */

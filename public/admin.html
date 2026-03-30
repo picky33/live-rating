@@ -198,31 +198,41 @@ socket.on('user_count',(count)=>{
    SETTINGS
 ========================= */
 
-function setCooldown(){
-    const val = document.getElementById('cooldownInput').value;
 
-    socket.emit('admin_control',{
-        action:"set_reaction_cooldown",
-        value: val
-    });
-}
+socket.on('admin_control', (data)=>{
 
-function toggleVoteMode(){
-    const btn = document.getElementById('voteToggleBtn');
-    const enabled = btn.innerText !== "Enabled";
+    if (data.type === "update_settings") {
 
-    socket.emit('admin_control',{
-        action:"toggle_single_vote",
-        enabled
-    });
-}
+        settings = {
+            ...settings,
+            ...data.settings
+        };
 
-socket.on('settings_update',(settings)=>{
-    document.getElementById('cooldownInput').value = settings.reactionCooldown;
+        // broadcast locally
+        io.emit('settings_update', settings);
 
-    const btn = document.getElementById('voteToggleBtn');
-    btn.innerText = settings.singleVoteMode ? "Enabled" : "Disabled";
+        // 🔥 forward to AWS
+        if (MASTER_URL) {
+            axios.post(`${MASTER_URL}/api/settings`, settings)
+                .catch(()=>{});
+        }
+    }
+
 });
+    
+
+function updateSettings(){
+
+    const newSettings = {
+        reactionCooldown: parseInt(document.getElementById('cooldownInput').value) || 0,
+        singleVoteMode: document.getElementById('singleVoteToggle').checked
+    };
+
+    socket.emit('admin_control', {
+        type: "update_settings",
+        settings: newSettings
+    });
+}
 
 /* =========================
    VIDEO CONTROLS

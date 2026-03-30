@@ -212,7 +212,18 @@ async function init(){
         title.innerText = "Connection Error";
     }
 }
+/* ---------- Settings Sync ---------- */
 
+socket.on('settings_update', (newSettings)=>{
+    settings = newSettings;
+});
+
+
+async function loadSettings(){
+    const res = await fetch('/api/settings');
+    settings = await res.json();
+}
+loadSettings();
 /* ---------- VIDEO ---------- */
 function playVideo(i){
     if(!playlist[i]) return;
