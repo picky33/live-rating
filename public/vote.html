@@ -275,9 +275,6 @@ async function react(emoji){
         body:JSON.stringify({emoji})
     });
 
-    if(res.status === 429){
-        alert("⏳ Please wait before reacting again");
-    }
 }
 </script>
 
