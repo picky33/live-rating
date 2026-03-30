@@ -410,23 +410,22 @@ app.post('/api/poll_vote',(req,res)=>{
 
 if (USE_REMOTE_MASTER) {
 
-    // AWS RELAY MODE
     const remoteSocket = ioClient(MASTER_URL);
 
     io.on('connection', (socket) => {
 
-        // Forward ALL events from local → AWS clients
         remoteSocket.onAny((event, ...args) => {
             socket.emit(event, ...args);
         });
 
-        // Forward AWS → local
-        socket.onAny((event, ...args) => {
-            remoteSocket.emit(event, ...args);
-        });
+        // ❌ REMOVE THIS (causes conflicts)
+        // socket.onAny((event, ...args) => {
+        //     remoteSocket.emit(event, ...args);
+        // });
 
         socket.emit('aws_status', true);
     });
+}
 
 } else {
 
@@ -469,9 +468,8 @@ if (USE_REMOTE_MASTER) {
 
                 // 🔥 forward to AWS
                 if (USE_REMOTE_MASTER && MASTER_URL) {
-                    axios.post(`${MASTER_URL}/api/settings`, {
-                        reactionCooldown: settings.reactionCooldown
-                    }).catch(()=>{});
+                    axios.post(`${MASTER_URL}/api/settings`, settings)
+                        .catch(()=>{});
                 }
             }
 
@@ -481,7 +479,6 @@ if (USE_REMOTE_MASTER) {
 
                 if (USE_REMOTE_MASTER && MASTER_URL) {
                     axios.post(`${MASTER_URL}/api/settings`, {
-                        singleVoteMode: settings.singleVoteMode
                     }).catch(()=>{});
                 }
             }
@@ -523,6 +520,7 @@ app.post('/api/settings', (req,res)=>{
         ...settings,
         ...req.body
     };
+    console.log("🔥 AWS RECEIVED SETTINGS:", req.body);
 
     // broadcast to all clients
     io.emit('settings_update', settings);
