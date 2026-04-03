@@ -10,6 +10,8 @@ const https = require('https');
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server);
+const ADMIN_USER = process.env.ADMIN_USER || "admin";
+const ADMIN_PASS = process.env.ADMIN_PASS || "password";
 
 app.use(express.json());
 app.use(express.static('public'));
@@ -452,6 +454,11 @@ if (USE_REMOTE_MASTER) {
 
         socket.on('admin_control', (d) => {
 
+            if (!d.auth || d.auth !== ADMIN_PASS) {
+                console.log("❌ Unauthorized admin attempt");
+                return;
+            }
+
             if (d.action === "next") nextVideo();
             if (d.action === "previous") previousVideo();
             if (d.action === "shuffle") toggleShuffle(d.enabled);
@@ -521,6 +528,16 @@ app.post('/api/settings', (req,res)=>{
     io.emit('settings_update', settings);
 
     res.sendStatus(200);
+});
+
+app.post('/api/login', (req, res) => {
+    const { username, password } = req.body;
+
+    if (username === ADMIN_USER && password === ADMIN_PASS) {
+        return res.json({ success: true });
+    }
+
+    res.status(401).json({ success: false });
 });
 
 /* =========================

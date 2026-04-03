@@ -9,7 +9,9 @@ services:
       - "3000:3000"
     environment:
       - USE_REMOTE_MASTER=${USE_REMOTE_MASTER:-false}
-      - MASTER_URL=${MASTER_URL:-http://100.107.127.85:3000}
+      - MASTER_URL=${MASTER_URL:-http://100.82.141.39:3000}
+      - ADMIN_USER=admin
+      - ADMIN_PASS=supersecret
     volumes:
       - /Users/nicholasharman/Movies/Anime OP_ED_INTRO_and_More:/app/videos
     depends_on:
