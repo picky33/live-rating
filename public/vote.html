@@ -108,6 +108,42 @@
                         background:#444;
                         color:white;
                     }
+                    
+                    .leaderboard-section {
+                        margin-top:40px;
+                        padding-top:20px;
+                        border-top:1px solid #444;
+                    }
+
+                    #voteLeaderboard {
+                        max-width:600px;
+                        margin:0 auto;
+                        padding-left:40px;
+                        text-align:left;
+                    }
+
+                    #voteLeaderboard li {
+                        padding:8px 10px;
+                        margin:4px 0;
+                        border-radius:6px;
+                        background:var(--card);
+                    }
+
+                    #voteLeaderboard .leader-1 {
+                        color:gold;
+                        font-weight:bold;
+                    }
+
+                    #voteLeaderboard .leader-2 {
+                        color:silver;
+                        font-weight:bold;
+                    }
+
+                    #voteLeaderboard .leader-3 {
+                        color:#cd7f32;
+                        font-weight:bold;
+                    }
+                    
                 </style>
     </head>
     <body>
@@ -162,10 +198,19 @@
             <button onclick="toggleTheme()">Toggle Light / Dark Mode</button>
         </div>
         
+        <div class="section leaderboard-section">
+
+            <h2>🏆 Leaderboard</h2>
+
+            <ol id="voteLeaderboard"></ol>
+
+        </div>
+        
         <script>
             const socket = io();
             let settings = {};
             let selectedPollOption = null;
+            const voteLeaderboard = document.getElementById('voteLeaderboard');
             
             /* =========================
              THEME SYSTEM
@@ -195,12 +240,82 @@
                 }
             }
             
+            async function updateVoteLeaderboard(){
+
+                try {
+
+                    const res = await fetch('/api/leaderboard');
+                    const data = await res.json();
+
+                    const mode = settings.leaderboardMode || "top5";
+
+                    let leaderboard = data
+                        .filter(v => v.count > 0)
+                        .sort((a,b) => b.avg - a.avg);
+
+                    if(mode === "top5"){
+                        leaderboard = leaderboard.slice(0,5);
+                    }
+
+                    voteLeaderboard.innerHTML = "";
+
+                    leaderboard.forEach((video, index)=>{
+
+                        const li = document.createElement('li');
+
+                        const medal =
+                            index === 0 ? "🥇 " :
+                            index === 1 ? "🥈 " :
+                            index === 2 ? "🥉 " :
+                            "";
+
+                        const title =
+                            video.title.replace(/\.[^/.]+$/, "");
+
+                        const shortTitle =
+                            title.length > 40
+                                ? title.substring(0,40) + "..."
+                                : title;
+
+                        li.innerText =
+                            `${medal}${shortTitle} — ${Number(video.avg).toFixed(2)} ⭐ (${video.count})`;
+
+                        if(index === 0)
+                            li.classList.add("leader-1");
+
+                        if(index === 1)
+                            li.classList.add("leader-2");
+
+                        if(index === 2)
+                            li.classList.add("leader-3");
+
+                        voteLeaderboard.appendChild(li);
+                    });
+
+                } catch(err) {
+
+                    console.error(
+                        "Failed to load leaderboard:",
+                        err
+                    );
+
+                }
+            }
+            
             /* Load saved theme */
             if(localStorage.getItem('theme') === 'light') {
                 setLightMode();
             } else {
                 setDarkMode();
             }
+            
+            /* =========================
+             LEADERBOARD STUFF
+             ========================= */
+            
+            socket.on('leaderboard_refresh', ()=>{
+                updateVoteLeaderboard();
+            });
             
             /* =========================
              POLL EVENTS
@@ -372,6 +487,7 @@
             
             socket.on('settings_update', (newSettings)=>{
                 settings = newSettings;
+                updateVoteLeaderboard();
             });
             
             async function loadActivePoll(){
@@ -389,6 +505,9 @@
             async function loadSettings(){
                 const res = await fetch('/api/settings');
                 settings = await res.json();
+               
+               // Load leaderboard after settings are known
+                updateVoteLeaderboard();
             }
             loadSettings();
             

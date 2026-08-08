@@ -51,7 +51,8 @@ let settings = {
     singleVoteMode: true,
     pollDuration: 40,
     resultsDuration: 20,
-    theme: "dark" // 👈 ADD THIS
+    theme: "dark",
+    leaderboardMode: "top5"
 };
 let qrOverrideURL = "";
 let qrSecondaryURL = "";
@@ -513,6 +514,16 @@ if (USE_REMOTE_MASTER) {
             if (d.action === "toggle_single_vote") {
 
                 settings.singleVoteMode = d.enabled;
+
+                if (MASTER_URL) {
+                    sendToMaster('/api/settings', settings);
+                }
+            }
+            
+            if (d.action === "set_leaderboard_mode") {
+
+                settings.leaderboardMode =
+                    d.value === "full" ? "full" : "top5";
 
                 if (MASTER_URL) {
                     sendToMaster('/api/settings', settings);

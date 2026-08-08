@@ -150,6 +150,20 @@
             <button onclick="setTheme('dark')">🌙 Dark Mode</button>
             <button onclick="setTheme('light')">☀️ Light Mode</button>
             
+            <h2>Vote Page Leaderboard</h2>
+
+            <button onclick="setLeaderboardMode('top5')" id="top5Btn">
+                🏆 Top 5
+            </button>
+
+            <button onclick="setLeaderboardMode('full')" id="fullLeaderboardBtn">
+                📋 Full Leaderboard
+            </button>
+
+            <p>
+                Current: <span id="leaderboardModeLabel">Top 5</span>
+            </p>
+            
             <!-- POLL -->
             <h2>Send Live Question</h2>
             
@@ -251,6 +265,7 @@
                                                 
                                                 document.getElementById('voteToggleBtn').innerText =
                                                 singleVoteMode ? "Enabled" : "Disabled";
+                                                updateLeaderboardModeUI(data.leaderboardMode);
                                             }
                                             
                                             /* Apply cooldown */
@@ -277,13 +292,31 @@
                                                 singleVoteMode ? "Enabled" : "Disabled";
                                             }
                                             
+                                            function updateLeaderboardModeUI(mode){
+
+                                                const label =
+                                                    document.getElementById('leaderboardModeLabel');
+
+                                                if(!label) return;
+
+                                                label.innerText =
+                                                    mode === "full"
+                                                        ? "Full Leaderboard"
+                                                        : "Top 5";
+                                            }
+                                            
                                             /* Sync updates from server */
                                             socket.on('settings_update', (s)=>{
-                                                document.getElementById('cooldownInput').value = s.reactionCooldown;
+
+                                                document.getElementById('cooldownInput').value =
+                                                    s.reactionCooldown;
+
                                                 singleVoteMode = s.singleVoteMode;
-                                                
+
                                                 document.getElementById('voteToggleBtn').innerText =
-                                                singleVoteMode ? "Enabled" : "Disabled";
+                                                    singleVoteMode ? "Enabled" : "Disabled";
+
+                                                updateLeaderboardModeUI(s.leaderboardMode);
                                             });
                                             
                                             /* Load on start */
@@ -318,6 +351,18 @@
                                                     value: theme
                                                 });
                                             }
+                                            /* =========================
+                                             Set Leaderboard Mode
+                                             ========================= */
+                                            function setLeaderboardMode(mode){
+
+                                                socket.emit('admin_control', {
+                                                    auth: authToken,
+                                                    action: "set_leaderboard_mode",
+                                                    value: mode
+                                                });
+                                            }
+                                            
                                             /* =========================
                                              POLL
                                              ========================= */
