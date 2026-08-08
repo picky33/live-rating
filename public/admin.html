@@ -143,6 +143,12 @@
             </div>
             
             <hr>
+            <hr>
+
+            <h2>Theme</h2>
+
+            <button onclick="setTheme('dark')">🌙 Dark Mode</button>
+            <button onclick="setTheme('light')">☀️ Light Mode</button>
             
             <!-- POLL -->
             <h2>Send Live Question</h2>
@@ -302,7 +308,16 @@
                                                     auth: authToken,action:"shuffle",enabled:el.checked});
                                             }
                                             
-                                            
+                                            /* =========================
+                                             Set Theme
+                                             ========================= */
+                                            function setTheme(theme){
+                                                socket.emit('admin_control', {
+                                                    auth: authToken,
+                                                    action: "set_theme",
+                                                    value: theme
+                                                });
+                                            }
                                             /* =========================
                                              POLL
                                              ========================= */

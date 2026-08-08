@@ -27,6 +27,7 @@ app.get('/api/health', (req,res)=>{
 
 const USE_REMOTE_MASTER = process.env.USE_REMOTE_MASTER === "true";
 const MASTER_URL = process.env.MASTER_URL || "";
+const RESET_DATA_ON_START = process.env.RESET_DATA_ON_START !== "false";
 
 /* =========================
    USER ID
@@ -49,7 +50,8 @@ let settings = {
     reactionCooldown: 1,
     singleVoteMode: true,
     pollDuration: 40,
-    resultsDuration: 20
+    resultsDuration: 20,
+    theme: "dark" // 👈 ADD THIS
 };
 let qrOverrideURL = "";
 let qrSecondaryURL = "";
@@ -68,18 +70,41 @@ let connectedUsers = 0;
 ========================= */
 
 const db = mysql.createPool({
-    host:'db',
-    user:'root',
-    password:'root',
-    database:'live_rating'
+    host: 'db',
+    user: 'root',
+    password: 'root',
+    database: 'live_rating'
 });
 
 db.query(`
 CREATE TABLE IF NOT EXISTS votes (
- id INT AUTO_INCREMENT PRIMARY KEY,
- video_id INT,
- rating INT
-)`);
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    video_id INT,
+    rating INT
+)`, (err) => {
+
+    if (err) {
+        console.error("❌ Failed to create votes table:", err);
+        return;
+    }
+
+    if (RESET_DATA_ON_START) {
+
+        db.query('TRUNCATE TABLE votes', (err) => {
+
+            if (err) {
+                console.error("❌ Failed to reset vote data:", err);
+            } else {
+                console.log("🧹 Vote data reset on startup");
+            }
+
+        });
+
+    } else {
+
+        console.log("💾 Vote data preserved");
+    }
+});
 
 /* =========================
    VIDEO SYSTEM (FIXED)
@@ -458,6 +483,15 @@ if (USE_REMOTE_MASTER) {
                 console.log("❌ Unauthorized admin attempt");
                 return;
             }
+            
+            if (d.action === "set_theme") {
+
+                settings.theme = d.value;
+
+                if (MASTER_URL) {
+                    sendToMaster('/api/settings', settings);
+                }
+            }
 
             if (d.action === "next") nextVideo();
             if (d.action === "previous") previousVideo();
@@ -546,5 +580,6 @@ app.post('/api/login', (req, res) => {
 
 server.listen(3000, '0.0.0.0', () => {
     console.log("Server running on port 3000");
+    console.log("RESET_DATA_ON_START:", RESET_DATA_ON_START);
     fetchPublicIP(); // 🔥 important
 });

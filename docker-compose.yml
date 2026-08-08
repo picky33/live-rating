@@ -10,10 +10,11 @@ services:
     environment:
       - USE_REMOTE_MASTER=${USE_REMOTE_MASTER:-false}
       - MASTER_URL=${MASTER_URL:-http://100.82.141.39:3000}
+      - RESET_DATA_ON_START=${RESET_DATA_ON_START:-true}
       - ADMIN_USER=admin
-      - ADMIN_PASS=supersecret
+      - ADMIN_PASS=AnimeBoston2026
     volumes:
-      - /Users/nicholasharman/Movies/Anime OP_ED_INTRO_and_More:/app/videos
+      - /Users/nicholasharman/Movies/Anime_OP_Battle:/app/videos
     depends_on:
       db:
         condition: service_healthy
