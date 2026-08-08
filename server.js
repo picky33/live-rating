@@ -548,7 +548,12 @@ if (USE_REMOTE_MASTER) {
         socket.emit('video_changed', getCurrentVideoIndex());
 
         if (activePoll) {
-            socket.emit('poll_started', activePoll);
+            socket.emit(
+                activePoll.votingOpen
+                    ? 'poll_started'
+                    : 'poll_closed',
+                activePoll
+            );
         }
 
         socket.emit('settings_update', settings);

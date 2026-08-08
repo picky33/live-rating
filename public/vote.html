@@ -322,7 +322,13 @@
              POLL EVENTS
              ========================= */
             socket.on('poll_started', (poll)=>{
-                document.querySelector('.section').style.display = "block";
+                const section = document.querySelector('#pollOptions').parentElement;
+
+                section.style.display = "block";
+
+                // Reset any previous selection for this poll
+                selectedPollOption = null;
+
                 renderPoll(poll);
             });
             
