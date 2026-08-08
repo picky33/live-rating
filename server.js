@@ -647,29 +647,59 @@ if (!USE_REMOTE_MASTER && MASTER_URL) {
    SETTINGS SYNC (MASTER + AWS)
 ========================= */
 
-app.post('/api/settings', (req,res)=>{
+app.post('/api/settings', (req, res) => {
 
-    // merge new values
+    // Merge incoming settings
     settings = {
         ...settings,
         ...req.body
     };
-    console.log("🔥 AWS RECEIVED SETTINGS:", req.body);
 
-    // broadcast to all clients
+    /*
+     * =========================
+     * AWS SETTINGS LOGGING
+     * =========================
+     */
+
+    if (USE_REMOTE_MASTER) {
+
+        if (req.body.reactionCooldown !== undefined) {
+            console.log(
+                `🔥 AWS RECEIVED REACTION COOLDOWN: ${req.body.reactionCooldown} seconds`
+            );
+        }
+
+        if (req.body.singleVoteMode !== undefined) {
+            console.log(
+                `🔥 AWS RECEIVED SINGLE VOTE MODE: ${
+                    req.body.singleVoteMode ? "ENABLED" : "DISABLED"
+                }`
+            );
+        }
+
+        if (req.body.theme !== undefined) {
+            console.log(
+                `🔥 AWS RECEIVED THEME: ${req.body.theme}`
+            );
+        }
+
+        if (req.body.leaderboardMode !== undefined) {
+            console.log(
+                `🔥 AWS RECEIVED LEADERBOARD MODE: ${req.body.leaderboardMode}`
+            );
+        }
+
+        // Also show the complete settings object
+        console.log(
+            "🔥 AWS SETTINGS NOW:",
+            settings
+        );
+    }
+
+    // Broadcast updated settings to connected clients
     io.emit('settings_update', settings);
 
     res.sendStatus(200);
-});
-
-app.post('/api/login', (req, res) => {
-    const { username, password } = req.body;
-
-    if (username === ADMIN_USER && password === ADMIN_PASS) {
-        return res.json({ success: true });
-    }
-
-    res.status(401).json({ success: false });
 });
 
 /* =========================

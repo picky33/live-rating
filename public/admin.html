@@ -72,6 +72,57 @@
                     margin-top:10px;
                     font-size:18px;
                 }
+                
+                /* =========================
+                   ADMIN SETTINGS GRID
+                ========================= */
+
+                .admin-settings-grid {
+                    display: grid;
+                    grid-template-columns: repeat(3, 1fr);
+                    gap: 20px;
+                    width: 90%;
+                    max-width: 1200px;
+                    margin: 25px auto;
+                    align-items: stretch;
+                }
+
+                .admin-settings-column {
+                    background: var(--card);
+                    border: 1px solid #333;
+                    border-radius: 10px;
+                    padding: 20px;
+                    box-sizing: border-box;
+                }
+
+                .admin-settings-column h2 {
+                    margin-top: 0;
+                    margin-bottom: 20px;
+                }
+
+                .admin-setting {
+                    margin: 20px 0;
+                }
+
+                .admin-setting input[type="text"],
+                .admin-setting input[type="number"] {
+                    width: 90%;
+                    box-sizing: border-box;
+                    margin-bottom: 8px;
+                }
+
+                .admin-setting button {
+                    margin: 4px;
+                }
+
+                /* Make the three columns stack on smaller screens */
+                @media (max-width: 800px) {
+                    .admin-settings-grid {
+                        grid-template-columns: 1fr;
+                        width: 95%;
+                    }
+                }
+                
             </style>
     </head>
     <body>
@@ -113,56 +164,139 @@
                 </label>
             </div>
             
-            <div style="margin-top:20px;">
-                <h3>QR Code URL</h3>
-                <input id="qrInput" type="text" placeholder="https://your-aws-url/vote.html" style="width:300px;">
-                    <button onclick="saveQR()">Save</button>
+            <!-- =========================
+                 THREE COLUMN SETTINGS
+            ========================= -->
+
+            <div class="admin-settings-grid">
+
+                <!-- LEFT: QR CODES -->
+                <div class="admin-settings-column">
+
+                    <h2>📱 QR Codes</h2>
+
+                    <div class="admin-setting">
+                        <h3>Vote QR Code</h3>
+
+                        <input
+                            id="qrInput"
+                            type="text"
+                            placeholder="https://your-aws-url/vote.html">
+
+                        <br>
+
+                        <button onclick="saveQR()">Save</button>
+                    </div>
+
+                    <hr>
+
+                    <div class="admin-setting">
+                        <h3>Secondary QR Code</h3>
+
+                        <input
+                            id="qr2Input"
+                            type="text"
+                            placeholder="WiFi / Custom QR content">
+
+                        <br>
+
+                        <button onclick="saveQR2()">Save</button>
+                    </div>
+
+                </div>
+
+
+                <!-- CENTER: SETTINGS -->
+                <div class="admin-settings-column">
+
+                    <h2>⚙️ Settings</h2>
+
+                    <div class="admin-setting">
+
+                        <h3>Reaction Cooldown</h3>
+
+                        <input
+                            type="number"
+                            id="cooldownInput"
+                            value="1"
+                            min="0">
+
+                        <span>seconds</span>
+
+                        <br>
+
+                        <button onclick="setCooldown()">Apply</button>
+
+                    </div>
+
+                    <hr>
+
+                    <div class="admin-setting">
+
+                        <h3>Single Vote Mode</h3>
+
+                        <button
+                            onclick="toggleVoteMode()"
+                            id="voteToggleBtn">
+                            Enabled
+                        </button>
+
+                    </div>
+
+                </div>
+
+
+                <!-- RIGHT: DISPLAY SETTINGS -->
+                <div class="admin-settings-column">
+
+                    <h2>🖥️ Display</h2>
+
+                    <div class="admin-setting">
+
+                        <h3>Live Display Theme</h3>
+
+                        <button onclick="setTheme('dark')">
+                            🌙 Dark Mode
+                        </button>
+
+                        <button onclick="setTheme('light')">
+                            ☀️ Light Mode
+                        </button>
+
+                    </div>
+
+                    <hr>
+
+                    <div class="admin-setting">
+
+                        <h3>Vote Page Leaderboard</h3>
+
+                        <button
+                            onclick="setLeaderboardMode('top5')"
+                            id="top5Btn">
+                            🏆 Top 5
+                        </button>
+
+                        <button
+                            onclick="setLeaderboardMode('full')"
+                            id="fullLeaderboardBtn">
+                            📋 Full Leaderboard
+                        </button>
+
+                        <p>
+                            Current:
+                            <span id="leaderboardModeLabel">
+                                Top 5
+                            </span>
+                        </p>
+
+                    </div>
+
+                </div>
+
             </div>
-            <div style="margin-top:20px;">
-                <h3>Secondary QR Code (WiFi / Custom)</h3>
-                <input id="qr2Input" type="text" placeholder="Optional QR content">
-                    <button onclick="saveQR2()">Save</button>
-            </div>
-            
+
             <hr>
-            
-            <!-- SETTINGS -->
-            <h2>Settings</h2>
-            
-            <div>
-                Reaction Cooldown (seconds):
-                <input type="number" id="cooldownInput" value="10" min="0">
-                    <button onclick="setCooldown()">Apply</button>
-            </div>
-            
-            <br>
-            
-            <div>
-                Single Vote Mode:
-                <button onclick="toggleVoteMode()" id="voteToggleBtn">Enabled</button>
-            </div>
-            
-            <hr>
-            <hr>
-
-            <h2>Theme</h2>
-
-            <button onclick="setTheme('dark')">🌙 Dark Mode</button>
-            <button onclick="setTheme('light')">☀️ Light Mode</button>
-            
-            <h2>Vote Page Leaderboard</h2>
-
-            <button onclick="setLeaderboardMode('top5')" id="top5Btn">
-                🏆 Top 5
-            </button>
-
-            <button onclick="setLeaderboardMode('full')" id="fullLeaderboardBtn">
-                📋 Full Leaderboard
-            </button>
-
-            <p>
-                Current: <span id="leaderboardModeLabel">Top 5</span>
-            </p>
             
             <!-- POLL -->
             <h2>Send Live Question</h2>
