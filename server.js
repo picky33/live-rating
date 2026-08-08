@@ -10,8 +10,6 @@ const https = require('https');
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server);
-const ADMIN_USER = process.env.ADMIN_USER || "admin";
-const ADMIN_PASS = process.env.ADMIN_PASS || "password";
 
 app.use(express.json());
 app.use(express.static('public'));
@@ -28,6 +26,8 @@ app.get('/api/health', (req,res)=>{
 const USE_REMOTE_MASTER = process.env.USE_REMOTE_MASTER === "true";
 const MASTER_URL = process.env.MASTER_URL || "";
 const RESET_DATA_ON_START = process.env.RESET_DATA_ON_START !== "false";
+const ADMIN_USER = process.env.ADMIN_USER || "admin";
+const ADMIN_PASS = process.env.ADMIN_PASS || "password";
 
 /* =========================
    USER ID

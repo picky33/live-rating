@@ -1,0 +1,11 @@
+version: "3.8"
+
+services:
+
+  app:
+    environment:
+      USE_REMOTE_MASTER: "true"
+      MASTER_URL: "http://100.107.127.85:3000"
+
+    volumes:
+      - /media:/app/videos

@@ -9,12 +9,12 @@ services:
       - "3000:3000"
     environment:
       - USE_REMOTE_MASTER=${USE_REMOTE_MASTER:-false}
-      - MASTER_URL=${MASTER_URL:-http://100.82.141.39:3000}
+      - MASTER_URL=${MASTER_URL:-}
+      - ADMIN_USER=${ADMIN_USER:-admin}
+      - ADMIN_PASS=${ADMIN_PASS:-password}
       - RESET_DATA_ON_START=${RESET_DATA_ON_START:-true}
-      - ADMIN_USER=admin
-      - ADMIN_PASS=AnimeBoston2026
     volumes:
-      - /Users/nicholasharman/Movies/Anime_OP_Battle:/app/videos
+      - ${VIDEO_PATH:-./videos}:/app/videos
     depends_on:
       db:
         condition: service_healthy
