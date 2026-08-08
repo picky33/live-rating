@@ -313,7 +313,8 @@
              LEADERBOARD STUFF
              ========================= */
             
-            socket.on('leaderboard_refresh', ()=>{
+            /* Updates the leaderboard on peoples phone when the video changes*/
+            socket.on('video_changed', ()=>{
                 updateVoteLeaderboard();
             });
             
