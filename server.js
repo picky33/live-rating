@@ -484,20 +484,72 @@ app.post('/api/vote',(req,res)=>{
 let totalReactions=0;
 
 app.post('/api/reaction',(req,res)=>{
-    const userId=req.body.userId||getUserId(req,res);
 
-    const now=Date.now();
-    if(settings.reactionCooldown>0){
-        const last=reactionTimestamps[userId]||0;
-        if(now-last<settings.reactionCooldown*1000)
+    const userId = req.body.userId || getUserId(req,res);
+
+    const now = Date.now();
+
+    /*
+     * =========================
+     * REACTION COOLDOWN
+     * =========================
+     */
+
+    if(settings.reactionCooldown > 0){
+
+        const last = reactionTimestamps[userId] || 0;
+
+        const cooldownMs = settings.reactionCooldown * 1000;
+
+        // Allow 250ms of network/processing tolerance
+        const effectiveCooldown = Math.max(
+            0,
+            cooldownMs - 250
+        );
+
+        const elapsed = now - last;
+
+        if(elapsed < effectiveCooldown){
+
+            console.log(
+                `⏳ Reaction cooldown: ` +
+                `user=${userId} ` +
+                `elapsed=${elapsed}ms ` +
+                `required=${effectiveCooldown}ms ` +
+                `setting=${settings.reactionCooldown}s`
+            );
+
             return res.status(429).send("Cooldown");
-        reactionTimestamps[userId]=now;
+        }
+
+        // Record the time the reaction was accepted
+        reactionTimestamps[userId] = now;
     }
 
+    /*
+     * =========================
+     * PROXY / LOCAL PROCESSING
+     * =========================
+     */
+
     handleProxy('/api/reaction',req,res,()=>{
+
         totalReactions++;
+
+        console.log(
+            `✅ Reaction accepted: ` +
+            `user=${userId} ` +
+            `emoji=${req.body.emoji} ` +
+            `cooldown=${settings.reactionCooldown}s`
+        );
+
         io.emit('new_reaction',req.body.emoji);
-        io.emit('reaction_update',totalReactions);
+
+        io.emit(
+            'reaction_update',
+            totalReactions
+        );
+
         res.sendStatus(200);
     });
 });
