@@ -333,35 +333,117 @@ app.post('/api/qr-secondary', (req,res)=>{
 
 app.get('/api/leaderboard', async (req,res)=>{
 
-    const data=[];
+    // AWS server: get leaderboard from LOCAL MASTER
+    if (USE_REMOTE_MASTER && MASTER_URL) {
+        try {
 
-    for(let i=0;i<playlist.length;i++){
-        const [rows] = await db.promise().query(
-            'SELECT AVG(rating) avg, COUNT(*) count FROM votes WHERE video_id=?',[i]
-        );
+            console.log("📊 Requesting leaderboard from MASTER:",
+                `${MASTER_URL}/api/leaderboard`);
 
-        data.push({
-            id:i,
-            title:playlist[i].title,
-            avg:Number(rows[0].avg)||0,
-            count:rows[0].count||0
-        });
+            const response = await axios.get(
+                `${MASTER_URL}/api/leaderboard`,
+                { timeout: 5000 }
+            );
+
+            return res.json(response.data);
+
+        } catch (err) {
+
+            console.error(
+                "❌ Failed to get leaderboard from MASTER:",
+                err.message
+            );
+
+            return res.status(503).json({
+                error: "Master server unavailable",
+                leaderboard: []
+            });
+        }
     }
 
-    res.json(data);
+    // LOCAL MASTER: read directly from local database
+    try {
+
+        const data=[];
+
+        for(let i=0;i<playlist.length;i++){
+
+            const [rows] = await db.promise().query(
+                'SELECT AVG(rating) avg, COUNT(*) count FROM votes WHERE video_id=?',
+                [i]
+            );
+
+            data.push({
+                id:i,
+                title:playlist[i].title,
+                avg:Number(rows[0].avg)||0,
+                count:rows[0].count||0
+            });
+        }
+
+        res.json(data);
+
+    } catch(err) {
+
+        console.error("❌ Failed to build leaderboard:", err.message);
+
+        res.status(500).json({
+            error: "Failed to load leaderboard"
+        });
+    }
 });
 
 /* DISTRIBUTION */
 
 app.get('/api/distribution/:id', async (req,res)=>{
-    const [rows]=await db.promise().query(
-        'SELECT rating, COUNT(*) count FROM votes WHERE video_id=? GROUP BY rating',
-        [req.params.id]
-    );
 
-    const out={};
-    rows.forEach(r=>out[r.rating]=r.count);
-    res.json(out);
+    // AWS server: ask LOCAL MASTER
+    if (USE_REMOTE_MASTER && MASTER_URL) {
+        try {
+
+            const response = await axios.get(
+                `${MASTER_URL}/api/distribution/${req.params.id}`,
+                { timeout: 5000 }
+            );
+
+            return res.json(response.data);
+
+        } catch(err) {
+
+            console.error(
+                "❌ Failed to get distribution from MASTER:",
+                err.message
+            );
+
+            return res.status(503).json({});
+        }
+    }
+
+    // LOCAL MASTER
+    try {
+
+        const [rows] = await db.promise().query(
+            'SELECT rating, COUNT(*) count FROM votes WHERE video_id=? GROUP BY rating',
+            [req.params.id]
+        );
+
+        const out={};
+
+        rows.forEach(r=>{
+            out[r.rating]=r.count;
+        });
+
+        res.json(out);
+
+    } catch(err) {
+
+        console.error(
+            "❌ Failed to get distribution:",
+            err.message
+        );
+
+        res.status(500).json({});
+    }
 });
 
 /* =========================
