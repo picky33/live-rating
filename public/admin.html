@@ -270,9 +270,12 @@
                                             
                                             /* Apply cooldown */
                                             function setCooldown(){
-                                                const value = parseInt(document.getElementById('cooldownInput').value) || 0;
-                                                
+
+                                                const value =
+                                                    parseInt(document.getElementById('cooldownInput').value) || 0;
+
                                                 socket.emit('admin_control', {
+                                                    auth: authToken,
                                                     action: "set_reaction_cooldown",
                                                     value
                                                 });
@@ -280,16 +283,17 @@
                                             
                                             /* Toggle vote mode */
                                             function toggleVoteMode(){
-                                                
+
                                                 singleVoteMode = !singleVoteMode;
-                                                
+
                                                 socket.emit('admin_control', {
+                                                    auth: authToken,
                                                     action: "toggle_single_vote",
                                                     enabled: singleVoteMode
                                                 });
-                                                
+
                                                 document.getElementById('voteToggleBtn').innerText =
-                                                singleVoteMode ? "Enabled" : "Disabled";
+                                                    singleVoteMode ? "Enabled" : "Disabled";
                                             }
                                             
                                             function updateLeaderboardModeUI(mode){
