@@ -1,294 +1,425 @@
 <!DOCTYPE html>
 <html>
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Vote</title>
-<script src="/socket.io/socket.io.js"></script>
+    <head>
+        <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>Vote</title>
+                <script src="/socket.io/socket.io.js"></script>
+                
+                <style>
+                    :root {
+                        --bg: #121212;
+                        --text: #ffffff;
+                        --card: #1e1e1e;
+                        --accent: #ff9800;
+                        --poll: #2196F3;
+                        --reaction: #333;
+                    }
+                    
+                    body {
+                        font-family:sans-serif;
+                        text-align:center;
+                        padding:20px;
+                        margin:0;
+                        background:var(--bg);
+                        color:var(--text);
+                        transition:background 0.3s, color 0.3s;
+                    }
+                    
+                    .section { margin:25px 0; }
+                    
+                    /* Poll Buttons */
+                    #pollOptions button {
+                        width:100%;
+                        font-size:18px;
+                        padding:14px;
+                        margin:6px 0;
+                        border:none;
+                        border-radius:8px;
+                        background:var(--poll);
+                        color:white;
+                        transition:background 0.2s, transform 0.1s;
+                        position:relative;
+                    }
+                    
+                    #pollOptions button:active {
+                        transform:scale(0.98);
+                    }
+                    
+                    /* Selected poll answer */
+                    #pollOptions button.selected {
+                        background:#4CAF50;
+                        color:white;
+                        font-weight:bold;
+                    }
+                    
+                    /* Checkmark */
+                    .poll-check {
+                        float:right;
+                        font-size:22px;
+                        font-weight:bold;
+                        margin-left:8px;
+                    }
+                    
+                    /* Rating Buttons (smaller) */
+                    .rating-buttons button {
+                        width:100%;
+                        font-size:20px;
+                        padding:12px;
+                        margin:5px 0;
+                        border:none;
+                        border-radius:8px;
+                        background:var(--accent);
+                        color:white;
+                    }
+                    
+                    /* Reaction Grid */
+                    .reaction-grid {
+                        display:grid;
+                        grid-template-columns: repeat(6,1fr);
+                        gap:8px;
+                    }
+                    
+                    .reaction-grid button {
+                        font-size:22px;
+                        padding:10px;
+                        border:none;
+                        border-radius:8px;
+                        background:var(--reaction);
+                        color:white;
+                    }
+                    
+                    button {
+                        touch-action: manipulation;
+                        cursor:pointer;
+                    }
+                    
+                    /* Theme Toggle */
+                    .theme-toggle {
+                        margin-top:40px;
+                        font-size:14px;
+                        opacity:0.8;
+                    }
+                    
+                    .theme-toggle button {
+                        padding:8px 14px;
+                        border:none;
+                        border-radius:6px;
+                        background:#444;
+                        color:white;
+                    }
+                </style>
+    </head>
+    <body>
+        
+        <!-- POLL (TOP) -->
+        <div class="section">
+            <h2 id="pollQuestion"></h2>
+            <div id="pollOptions"></div>
+        </div>
+        
+        <h1>Rate This Video</h1>
+        
+        <div class="section rating-buttons">
+            <button onclick="vote(1)">⭐</button>
+            <button onclick="vote(2)">⭐⭐</button>
+            <button onclick="vote(3)">⭐⭐⭐</button>
+            <button onclick="vote(4)">⭐⭐⭐⭐</button>
+            <button onclick="vote(5)">⭐⭐⭐⭐⭐</button>
+        </div>
+        
+        <div class="section">
+            <h2>React</h2>
+            <div class="reaction-grid">
+                <button onclick="react('🔥')">🔥</button>
+                <button onclick="react('😂')">😂</button>
+                <button onclick="react('👏')">👏</button>
+                <button onclick="react('😮')">😮</button>
+                <button onclick="react('🫡')">🫡</button>
+                <button onclick="react('😢')">😢</button>
+                <button onclick="react('👀')">👀</button>
+                <button onclick="react('💯')">💯</button>
+                <button onclick="react('👍')">👍</button>
+                <button onclick="react('👎')">👎</button>
+                
+                <!-- NEW EMOJIS -->
+                <button onclick="react('🤘')">🤘</button>
+                <button onclick="react('🔊')">🔊</button>
+                <button onclick="react('🥁')">🥁</button>
+                <button onclick="react('🎸')">🎸</button>
+                <button onclick="react('🎶')">🎶</button>
+                <button onclick="react('🎤')">🎤</button>
+                <button onclick="react('😈')">😈</button>
+                <button onclick="react('😭')">😭</button>
+                <button onclick="react('🙌')">🙌</button>
+                <button onclick="react('❤️')">❤️</button>
+                <button onclick="react('🥰')">🥰</button>
+            </div>
+        </div>
+        
+        <!-- DARK/LIGHT TOGGLE -->
+        <div class="theme-toggle">
+            <button onclick="toggleTheme()">Toggle Light / Dark Mode</button>
+        </div>
+        
+        <script>
+            const socket = io();
+            let settings = {};
+            let selectedPollOption = null;
+            
+            /* =========================
+             THEME SYSTEM
+             ========================= */
+            
+            function setLightMode() {
+                document.documentElement.style.setProperty('--bg','#ffffff');
+                document.documentElement.style.setProperty('--text','#000000');
+                document.documentElement.style.setProperty('--card','#f5f5f5');
+                document.documentElement.style.setProperty('--reaction','#ddd');
+                localStorage.setItem('theme','light');
+            }
+            
+            function setDarkMode() {
+                document.documentElement.style.setProperty('--bg','#121212');
+                document.documentElement.style.setProperty('--text','#ffffff');
+                document.documentElement.style.setProperty('--card','#1e1e1e');
+                document.documentElement.style.setProperty('--reaction','#333');
+                localStorage.setItem('theme','dark');
+            }
+            
+            function toggleTheme() {
+                if(localStorage.getItem('theme') === 'light') {
+                    setDarkMode();
+                } else {
+                    setLightMode();
+                }
+            }
+            
+            /* Load saved theme */
+            if(localStorage.getItem('theme') === 'light') {
+                setLightMode();
+            } else {
+                setDarkMode();
+            }
+            
+            /* =========================
+             POLL EVENTS
+             ========================= */
+            socket.on('poll_started', (poll)=>{
+                document.querySelector('.section').style.display = "block";
+                renderPoll(poll);
+            });
+            
+            socket.on('poll_closed', (poll)=>{
+                disableButtons();
 
-<style>
-:root {
-    --bg: #121212;
-    --text: #ffffff;
-    --card: #1e1e1e;
-    --accent: #ff9800;
-    --poll: #2196F3;
-    --reaction: #333;
-}
+                document.getElementById('pollQuestion').innerText =
+                    poll.question + " — Results";
 
-body {
-    font-family:sans-serif;
-    text-align:center;
-    padding:20px;
-    margin:0;
-    background:var(--bg);
-    color:var(--text);
-    transition:background 0.3s, color 0.3s;
-}
+                renderPollResults(poll);
+            });
+            
+            socket.on('poll_cleared', ()=>{
+                document.getElementById('pollQuestion').innerText="";
+                document.getElementById('pollOptions').innerHTML="";
+                document.querySelector('#pollOptions').parentElement.style.display = "none";
 
-.section { margin:25px 0; }
+                selectedPollOption = null;
+            });
+            
+            function renderPoll(poll){
+                const section = document.querySelector('#pollOptions').parentElement;
+                section.style.display = "block";
 
-/* Poll Buttons */
-#pollOptions button {
-    width:100%;
-    font-size:18px;
-    padding:14px;
-    margin:6px 0;
-    border:none;
-    border-radius:8px;
-    background:var(--poll);
-    color:white;
-}
+                document.getElementById('pollQuestion').innerText = poll.question;
 
-#pollOptions button:disabled {
-    background:#777;
-}
+                const container = document.getElementById('pollOptions');
+                container.innerHTML = "";
 
-/* Rating Buttons (smaller) */
-.rating-buttons button {
-    width:100%;
-    font-size:20px;
-    padding:12px;
-    margin:5px 0;
-    border:none;
-    border-radius:8px;
-    background:var(--accent);
-    color:white;
-}
+                poll.options.forEach((opt, i) => {
 
-/* Reaction Grid */
-.reaction-grid {
-    display:grid;
-    grid-template-columns: repeat(6,1fr);
-    gap:8px;
-}
+                    const btn = document.createElement('button');
 
-.reaction-grid button {
-    font-size:22px;
-    padding:10px;
-    border:none;
-    border-radius:8px;
-    background:var(--reaction);
-    color:white;
-}
+                    btn.dataset.optionText = opt;
 
-button {
-    touch-action: manipulation;
-    cursor:pointer;
-}
+                    const text = document.createElement('span');
+                    text.className = 'poll-option-text';
+                    text.innerText = opt;
 
-/* Theme Toggle */
-.theme-toggle {
-    margin-top:40px;
-    font-size:14px;
-    opacity:0.8;
-}
+                    btn.appendChild(text);
 
-.theme-toggle button {
-    padding:8px 14px;
-    border:none;
-    border-radius:6px;
-    background:#444;
-    color:white;
-}
-</style>
-</head>
-<body>
+                    btn.onclick = () => submitVote(i, btn, opt);
 
-<!-- POLL (TOP) -->
-<div class="section">
-<h2 id="pollQuestion"></h2>
-<div id="pollOptions"></div>
-</div>
+                    container.appendChild(btn);
+                });
+            }
+            
+            function renderPollResults(poll){
 
-<h1>Rate This Video</h1>
+                const container = document.getElementById('pollOptions');
 
-<div class="section rating-buttons">
-<button onclick="vote(1)">⭐</button>
-<button onclick="vote(2)">⭐⭐</button>
-<button onclick="vote(3)">⭐⭐⭐</button>
-<button onclick="vote(4)">⭐⭐⭐⭐</button>
-<button onclick="vote(5)">⭐⭐⭐⭐⭐</button>
-</div>
+                const total = Object.values(poll.counts)
+                    .reduce((sum, count) => sum + count, 0);
 
-<div class="section">
-<h2>React</h2>
-<div class="reaction-grid">
-<button onclick="react('🔥')">🔥</button>
-<button onclick="react('😂')">😂</button>
-<button onclick="react('👏')">👏</button>
-<button onclick="react('😮')">😮</button>
-<button onclick="react('🫡')">🫡</button>
-<button onclick="react('😢')">😢</button>
-<button onclick="react('👀')">👀</button>
-<button onclick="react('💯')">💯</button>
-<button onclick="react('👍')">👍</button>
-<button onclick="react('👎')">👎</button>
+                container.innerHTML = "";
 
-<!-- NEW EMOJIS -->
-<button onclick="react('🤘')">🤘</button>
-<button onclick="react('🔊')">🔊</button>
-<button onclick="react('🥁')">🥁</button>
-<button onclick="react('🎸')">🎸</button>
-<button onclick="react('🎶')">🎶</button>
-<button onclick="react('🎤')">🎤</button>
-<button onclick="react('😈')">😈</button>
-<button onclick="react('😭')">😭</button>
-<button onclick="react('🙌')">🙌</button>
-<button onclick="react('❤️')">❤️</button>
-<button onclick="react('🥰')">🥰</button>
-</div>
-</div>
+                poll.options.forEach((opt, i)=>{
 
-<!-- DARK/LIGHT TOGGLE -->
-<div class="theme-toggle">
-<button onclick="toggleTheme()">Toggle Light / Dark Mode</button>
-</div>
+                    const count = poll.counts[i] || 0;
+                    const percentage = total
+                        ? ((count / total) * 100).toFixed(1)
+                        : "0.0";
 
-<script>
-const socket = io();
-let settings = {};
+                    const wrapper = document.createElement('div');
+                    wrapper.style.marginBottom = "12px";
+                    wrapper.style.textAlign = "left";
 
-/* =========================
-   THEME SYSTEM
-========================= */
+                    const label = document.createElement('div');
 
-function setLightMode() {
-    document.documentElement.style.setProperty('--bg','#ffffff');
-    document.documentElement.style.setProperty('--text','#000000');
-    document.documentElement.style.setProperty('--card','#f5f5f5');
-    document.documentElement.style.setProperty('--reaction','#ddd');
-    localStorage.setItem('theme','light');
-}
+                    label.innerText =
+                        `${opt} — ${count} vote${count === 1 ? "" : "s"} (${percentage}%)`;
 
-function setDarkMode() {
-    document.documentElement.style.setProperty('--bg','#121212');
-    document.documentElement.style.setProperty('--text','#ffffff');
-    document.documentElement.style.setProperty('--card','#1e1e1e');
-    document.documentElement.style.setProperty('--reaction','#333');
-    localStorage.setItem('theme','dark');
-}
+                    label.style.marginBottom = "4px";
 
-function toggleTheme() {
-    if(localStorage.getItem('theme') === 'light') {
-        setDarkMode();
-    } else {
-        setLightMode();
-    }
-}
+                    const barContainer = document.createElement('div');
 
-/* Load saved theme */
-if(localStorage.getItem('theme') === 'light') {
-    setLightMode();
-} else {
-    setDarkMode();
-}
+                    barContainer.style.width = "100%";
+                    barContainer.style.height = "18px";
+                    barContainer.style.background = "#333";
+                    barContainer.style.borderRadius = "6px";
+                    barContainer.style.overflow = "hidden";
 
-/* =========================
-   POLL EVENTS
-========================= */
-socket.on('poll_started', (poll)=>{
-    document.querySelector('.section').style.display = "block";
-    renderPoll(poll);
-});
+                    const bar = document.createElement('div');
 
-socket.on('poll_closed', ()=>{
-    disableButtons();
-    document.getElementById('pollQuestion').innerText += " (Voting Closed)";
-    document.querySelector('.section').style.display = "none";
-});
+                    bar.style.width = `${percentage}%`;
+                    bar.style.height = "100%";
+                    bar.style.background = "#2196F3";
 
-socket.on('poll_cleared', ()=>{
-    document.getElementById('pollQuestion').innerText="";
-    document.getElementById('pollOptions').innerHTML="";
-    document.querySelector('#pollOptions').parentElement.style.display = "none";
-});
+                    barContainer.appendChild(bar);
 
-function renderPoll(poll){
-    const section = document.querySelector('#pollOptions').parentElement;
-    section.style.display = "block";
+                    wrapper.appendChild(label);
+                    wrapper.appendChild(barContainer);
 
-    document.getElementById('pollQuestion').innerText = poll.question;
+                    /*
+                     * Keep the user's selection highlighted
+                     */
+                    if (i === selectedPollOption) {
 
-    const container = document.getElementById('pollOptions');
-    container.innerHTML="";
+                        wrapper.style.background = "#4CAF50";
+                        wrapper.style.color = "white";
+                        wrapper.style.padding = "10px";
+                        wrapper.style.borderRadius = "8px";
+                        wrapper.style.fontWeight = "bold";
 
-    poll.options.forEach((opt,i)=>{
-        const btn=document.createElement('button');
-        btn.innerText=opt;
-        btn.onclick=()=>submitVote(i,btn);
-        container.appendChild(btn);
-    });
-}
+                        label.innerText =
+                            `✓ ${opt} — ${count} vote${count === 1 ? "" : "s"} (${percentage}%)`;
+                    }
 
-function disableButtons(){
-    document.querySelectorAll('#pollOptions button')
-        .forEach(btn=>btn.disabled=true);
-}
+                    container.appendChild(wrapper);
+                });
+            }
+            
+            function disableButtons(){
+                document.querySelectorAll('#pollOptions button')
+                .forEach(btn=>btn.disabled=true);
+            }
+            
+            async function submitVote(index, btn, optionText){
 
-async function submitVote(index,btn){
-    if(navigator.vibrate) navigator.vibrate(50);
-    btn.innerText="✔ Submitted";
-    btn.style.background="#4CAF50";
-    disableButtons();
+                if(navigator.vibrate) navigator.vibrate(50);
 
-    await fetch('/api/poll_vote',{
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({optionIndex:index})
-    });
-}
+                selectedPollOption = index;
 
-socket.on('settings_update', (newSettings)=>{
-    settings = newSettings;
-});
+                // Keep the selected option green
+                btn.classList.add('selected');
 
-async function loadActivePoll(){
-    try {
-        const res = await fetch('/api/current');
-        const data = await res.json();
+                const text = btn.querySelector('.poll-option-text');
 
-        // poll is sent via socket on connect already
-        // but this ensures fallback if missed
-    } catch {}
-}
+                if(text){
+                    text.innerText = `You picked: ${optionText}`;
+                }
 
-loadActivePoll();
-    
-async function loadSettings(){
-    const res = await fetch('/api/settings');
-    settings = await res.json();
-}
-loadSettings();
+                // Add checkmark
+                const check = document.createElement('span');
+                check.className = 'poll-check';
+                check.innerText = '✓';
 
-/* =========================
-   VIDEO RATING
-========================= */
-async function vote(rating){
-    if(navigator.vibrate) navigator.vibrate(30);
+                btn.appendChild(check);
 
-    await fetch('/api/vote',{
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({rating})
-    });
+                // Disable all choices, but leave them visible
+                disableButtons();
 
-}
+                try {
 
-/* =========================
-   REACTIONS
-========================= */
-async function react(emoji){
-    if(navigator.vibrate) navigator.vibrate(20);
+                    const res = await fetch('/api/poll_vote',{
+                        method:'POST',
+                        headers:{
+                            'Content-Type':'application/json'
+                        },
+                        body:JSON.stringify({
+                            optionIndex:index
+                        })
+                    });
 
-    const res = await fetch('/api/reaction',{
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({emoji})
-    });
+                    if(!res.ok){
+                        console.error("Poll vote rejected:", res.status);
+                    }
 
-}
-</script>
-
-</body>
+                } catch(err) {
+                    console.error("Poll vote failed:", err);
+                }
+            }
+            
+            socket.on('settings_update', (newSettings)=>{
+                settings = newSettings;
+            });
+            
+            async function loadActivePoll(){
+                try {
+                    const res = await fetch('/api/current');
+                    const data = await res.json();
+                    
+                    // poll is sent via socket on connect already
+                    // but this ensures fallback if missed
+                } catch {}
+            }
+            
+            loadActivePoll();
+            
+            async function loadSettings(){
+                const res = await fetch('/api/settings');
+                settings = await res.json();
+            }
+            loadSettings();
+            
+            /* =========================
+             VIDEO RATING
+             ========================= */
+            async function vote(rating){
+                if(navigator.vibrate) navigator.vibrate(30);
+                
+                await fetch('/api/vote',{
+                    method:'POST',
+                    headers:{'Content-Type':'application/json'},
+                    body:JSON.stringify({rating})
+                });
+                
+            }
+            
+            /* =========================
+             REACTIONS
+             ========================= */
+            async function react(emoji){
+                if(navigator.vibrate) navigator.vibrate(20);
+                
+                const res = await fetch('/api/reaction',{
+                    method:'POST',
+                    headers:{'Content-Type':'application/json'},
+                    body:JSON.stringify({emoji})
+                });
+                
+            }
+        </script>
+        
+    </body>
 </html>
