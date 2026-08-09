@@ -511,14 +511,6 @@ app.post('/api/reaction',(req,res)=>{
 
         if(elapsed < effectiveCooldown){
 
-            console.log(
-                `⏳ Reaction cooldown: ` +
-                `user=${userId} ` +
-                `elapsed=${elapsed}ms ` +
-                `required=${effectiveCooldown}ms ` +
-                `setting=${settings.reactionCooldown}s`
-            );
-
             return res.status(429).send("Cooldown");
         }
 
@@ -536,12 +528,12 @@ app.post('/api/reaction',(req,res)=>{
 
         totalReactions++;
 
-        console.log(
+        /*console.log(
             `✅ Reaction accepted: ` +
             `user=${userId} ` +
             `emoji=${req.body.emoji} ` +
             `cooldown=${settings.reactionCooldown}s`
-        );
+        );*/
 
         io.emit('new_reaction',req.body.emoji);
 
@@ -742,10 +734,11 @@ app.post('/api/settings', (req, res) => {
         }
 
         // Also show the complete settings object
+        /*
         console.log(
             "🔥 AWS SETTINGS NOW:",
             settings
-        );
+        ); */
     }
 
     // Broadcast updated settings to connected clients
