@@ -521,13 +521,52 @@
             });
             
             async function loadActivePoll(){
+
                 try {
-                    const res = await fetch('/api/current');
+
+                    const res = await fetch('/api/active-poll');
+
+                    if (!res.ok) {
+                        console.error("Failed to load active poll:", res.status);
+                        return;
+                    }
+
                     const data = await res.json();
-                    
-                    // poll is sent via socket on connect already
-                    // but this ensures fallback if missed
-                } catch {}
+
+                    if (!data.active || !data.poll) {
+                        return;
+                    }
+
+                    const poll = data.poll;
+
+                    /*
+                     * If voting is still open, show the poll
+                     * and allow the user to vote.
+                     */
+                    if (poll.votingOpen) {
+
+                        renderPoll(poll);
+
+                    } else {
+
+                        /*
+                         * Poll has closed but results are still
+                         * being displayed.
+                         */
+                        document.getElementById('pollQuestion').innerText =
+                            poll.question + " — Results";
+
+                        renderPollResults(poll);
+                    }
+
+                } catch (err) {
+
+                    console.error(
+                        "Failed to load active poll:",
+                        err
+                    );
+
+                }
             }
             
             loadActivePoll();

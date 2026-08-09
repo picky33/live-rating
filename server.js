@@ -749,6 +749,43 @@ app.post('/api/settings', (req, res) => {
     res.sendStatus(200);
 });
 
+app.get('/api/active-poll', async (req, res) => {
+
+    // AWS server: ask the LOCAL MASTER for the active poll
+    if (USE_REMOTE_MASTER && MASTER_URL) {
+        try {
+            const response = await axios.get(
+                `${MASTER_URL}/api/active-poll`,
+                { timeout: 5000 }
+            );
+
+            return res.json(response.data);
+
+        } catch (err) {
+            console.error(
+                "❌ Failed to get active poll from MASTER:",
+                err.message
+            );
+
+            return res.status(503).json({
+                active: false
+            });
+        }
+    }
+
+    // LOCAL MASTER
+    if (!activePoll) {
+        return res.json({
+            active: false
+        });
+    }
+
+    res.json({
+        active: true,
+        poll: activePoll
+    });
+});
+
 /* =========================
    ADMIN LOGIN
 ========================= */
