@@ -610,6 +610,8 @@ if (USE_REMOTE_MASTER) {
         socket.on('video_ended', nextVideo);
 
         socket.on('admin_control', (d) => {
+            
+            console.log("🔧 ADMIN CONTROL RECEIVED:", d.action);
 
             if (!d.auth || d.auth !== ADMIN_PASS) {
                 console.log("❌ Unauthorized admin attempt");
