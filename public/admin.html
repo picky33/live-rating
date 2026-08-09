@@ -405,13 +405,19 @@
                                             /* Apply cooldown */
                                             function setCooldown(){
 
-                                                const value =
-                                                    parseInt(document.getElementById('cooldownInput').value) || 0;
+                                                const input = document.getElementById('cooldownInput');
+
+                                                const value = parseFloat(input.value);
+
+                                                if (isNaN(value) || value < 0) {
+                                                    input.value = 0;
+                                                    return;
+                                                }
 
                                                 socket.emit('admin_control', {
                                                     auth: authToken,
                                                     action: "set_reaction_cooldown",
-                                                    value
+                                                    value: value
                                                 });
                                             }
                                             

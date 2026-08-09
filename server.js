@@ -643,7 +643,7 @@ if (USE_REMOTE_MASTER) {
 
             if (d.action === "set_reaction_cooldown") {
 
-                settings.reactionCooldown = parseInt(d.value) || 0;
+                settings.reactionCooldown = parseFloat(d.value) || 0;
 
                 if (MASTER_URL) {
                     sendToMaster('/api/settings', settings);
