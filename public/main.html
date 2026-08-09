@@ -356,64 +356,67 @@ socket.on('poll_started',(p)=>{
 
 socket.on('poll_update',updatePoll);
 
-function updatePoll(p){
+socket.on('poll_closed', (p)=>{
+    updatePoll(p);
+});
 
-    const total = Object.values(p.counts)
-        .reduce((a,b) => a + b, 0);
+    function updatePoll(p){
 
-    // Find the highest number of votes
-    const maxVotes = Math.max(
-        ...Object.values(p.counts),
-        0
-    );
+        const total = Object.values(p.counts)
+            .reduce((a,b) => a + b, 0);
 
-    // Results are being displayed after voting closed
-    const showingResults = p.votingOpen === false;
+        const maxVotes = Math.max(
+            ...Object.values(p.counts),
+            0
+        );
 
-    pollSection.innerHTML =
-        `<h3>${p.question}</h3>`;
+        // Only highlight winners after voting has closed
+        const showingResults = p.votingOpen === false;
 
-    p.options.forEach((opt,i)=>{
+        pollSection.innerHTML =
+            `<h3>${p.question}</h3>`;
 
-        const c = p.counts[i] || 0;
+        p.options.forEach((opt,i)=>{
 
-        const pct = total
-            ? (c / total * 100).toFixed(1)
-            : 0;
+            const c = p.counts[i] || 0;
 
-        const isWinner =
-            showingResults &&
-            maxVotes > 0 &&
-            c === maxVotes;
+            const pct = total
+                ? (c / total * 100).toFixed(1)
+                : 0;
 
-        const trophy = isWinner
-            ? "🏆 "
-            : "";
+            const isWinner =
+                showingResults &&
+                maxVotes > 0 &&
+                c === maxVotes;
 
-        const barColor = isWinner
-            ? "#FFD700"
-            : "#2196F3";
+            const trophy = isWinner
+                ? "🏆 "
+                : "";
 
-        pollSection.innerHTML += `
-            <div style="
-                margin-top:12px;
-                font-weight:${isWinner ? 'bold' : 'normal'};
-            ">
-                ${trophy}${opt} (${c})
-            </div>
+            const barColor = isWinner
+                ? "#FFD700"
+                : "#2196F3";
 
-            <div class="poll-bar-container">
-                <div
-                    class="poll-bar-fill"
-                    style="
-                        width:${pct}%;
-                        background:${barColor};
-                    "
-                ></div>
-            </div>
-        `;
-    });
-}
+            pollSection.innerHTML += `
+                <div style="
+                    margin-top:12px;
+                    font-weight:${isWinner ? 'bold' : 'normal'};
+                ">
+                    ${trophy}${opt} (${c})
+                </div>
+
+                <div class="poll-bar-container">
+                    <div
+                        class="poll-bar-fill"
+                        style="
+                            width:${pct}%;
+                            background:${barColor};
+                        "
+                    ></div>
+                </div>
+            `;
+        });
+    }
 
 socket.on('poll_cleared',()=>{
     pollSection.innerHTML="";
