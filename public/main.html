@@ -358,19 +358,58 @@ socket.on('poll_update',updatePoll);
 
 function updatePoll(p){
 
-    let total = Object.values(p.counts).reduce((a,b)=>a+b,0);
+    const total = Object.values(p.counts)
+        .reduce((a,b) => a + b, 0);
 
-    pollSection.innerHTML = `<h3>${p.question}</h3>`;
+    // Find the highest number of votes
+    const maxVotes = Math.max(
+        ...Object.values(p.counts),
+        0
+    );
+
+    // Results are being displayed after voting closed
+    const showingResults = p.votingOpen === false;
+
+    pollSection.innerHTML =
+        `<h3>${p.question}</h3>`;
 
     p.options.forEach((opt,i)=>{
 
         const c = p.counts[i] || 0;
-        const pct = total ? (c/total*100).toFixed(1) : 0;
+
+        const pct = total
+            ? (c / total * 100).toFixed(1)
+            : 0;
+
+        const isWinner =
+            showingResults &&
+            maxVotes > 0 &&
+            c === maxVotes;
+
+        const trophy = isWinner
+            ? "🏆 "
+            : "";
+
+        const barColor = isWinner
+            ? "#FFD700"
+            : "#2196F3";
 
         pollSection.innerHTML += `
-            <div>${opt} (${c})</div>
+            <div style="
+                margin-top:12px;
+                font-weight:${isWinner ? 'bold' : 'normal'};
+            ">
+                ${trophy}${opt} (${c})
+            </div>
+
             <div class="poll-bar-container">
-                <div class="poll-bar-fill" style="width:${pct}%"></div>
+                <div
+                    class="poll-bar-fill"
+                    style="
+                        width:${pct}%;
+                        background:${barColor};
+                    "
+                ></div>
             </div>
         `;
     });
