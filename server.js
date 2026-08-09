@@ -755,6 +755,41 @@ app.post('/api/settings', (req, res) => {
 });
 
 /* =========================
+   ADMIN LOGIN
+========================= */
+
+app.post('/api/login', (req, res) => {
+
+    const { username, password } = req.body;
+
+    console.log(
+        `🔐 Admin login attempt: username=${username}`
+    );
+
+    if (
+        username === ADMIN_USER &&
+        password === ADMIN_PASS
+    ) {
+
+        console.log(
+            `✅ Admin login successful: username=${username}`
+        );
+
+        return res.json({
+            success: true
+        });
+    }
+
+    console.log(
+        `❌ Admin login failed: username=${username}`
+    );
+
+    res.status(401).json({
+        success: false
+    });
+});
+
+/* =========================
    START
 ========================= */
 
