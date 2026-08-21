@@ -181,6 +181,10 @@ function cleanTitle(title){
     title = title.replace(/\.[^/.]+$/, ""); // remove extension
     return title.length > 40 ? title.substring(0,40) + "..." : title;
 }
+function cleanVideoTitle(title){
+    title = title.replace(/\.[^/.]+$/, "");
+    return title.length > 60 ? title.substring(0,60) + "..." : title;
+}
     
 function setLightMode(){
     document.documentElement.style.setProperty('--bg', '#ffffff');
@@ -267,7 +271,7 @@ function playVideo(i){
     currentIndex = i;
     const v = playlist[i];
 
-    title.innerText = cleanTitle(v.title);
+    title.innerText = cleanVideoTitle(v.title);
 
     video.src = v.file_path;
     video.load();
